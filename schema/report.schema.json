@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/smagew/whatsrisky/blob/main/schema/report.schema.json",
+  "title": "whatsrisky report",
+  "description": "Machine-readable output of a whatsrisky scan. Stable contract for other tools: bump schema_version on any breaking change.",
+  "type": "object",
+  "required": ["schema_version", "generator", "project_path", "counts", "tools", "findings"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "generator": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "project_path": { "type": "string" },
+    "project_name": { "type": "string" },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": "string" },
+    "duration_s": { "type": "number" },
+    "git_commit": { "type": "string" },
+    "git_branch": { "type": "string" },
+    "diff_range": {
+      "type": "string",
+      "description": "Git range the scan was scoped to; empty means the whole project."
+    },
+    "scope_paths": {
+      "type": "array",
+      "description": "Files the scan was limited to when diff_range is set.",
+      "items": { "type": "string" }
+    },
+    "risk_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Saturating weighted aggregate. Ranks projects; does not measure them."
+    },
+    "verdict": { "type": "string" },
+    "counts": {
+      "type": "object",
+      "required": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "tools": {
+      "type": "array",
+      "description": "One entry per scanner. A status other than \"ok\" means that area is UNSCANNED, not clean.",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "findings"],
+        "properties": {
+          "name": { "type": "string", "enum": ["semgrep", "trivy", "gitleaks", "claude"] },
+          "status": { "type": "string", "enum": ["ok", "skipped", "error", "missing"] },
+          "version": { "type": "string" },
+          "command": { "type": "string" },
+          "duration_s": { "type": "number" },
+          "findings": { "type": "integer", "minimum": 0 },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "severity", "title", "fingerprint"],
+        "properties": {
+          "tool": { "type": "string" },
+          "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "category": { "type": "string" },
+          "rule_id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": ["integer", "null"] },
+          "end_line": { "type": ["integer", "null"] },
+          "cwe": { "type": "array", "items": { "type": "string" } },
+          "owasp": { "type": "array", "items": { "type": "string" } },
+          "references": { "type": "array", "items": { "type": "string" } },
+          "remediation": { "type": "string" },
+          "package": { "type": "string" },
+          "installed_version": { "type": "string" },
+          "fixed_version": { "type": "string" },
+          "confidence": { "type": "string" },
+          "snippet": { "type": "string" },
+          "cvss": { "type": "string" },
+          "fingerprint": {
+            "type": "string",
+            "description": "Stable id for this finding; suitable as a suppression/baseline key."
+          }
+        }
+      }
+    }
+  }
+}

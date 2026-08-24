@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Actions are pinned to commit SHAs and the scanners to explicit versions: a
+# mutable tag or a `latest` download is an unreviewed change in a security tool.
+env:
+  TRIVY_VERSION: "0.74.0"
+  GITLEAKS_VERSION: "8.30.1"
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit · python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: uv pip install --system -e ".[dev]"
+      - name: Lint
+        run: python -m pyflakes whatsrisky tests
+      - name: Unit tests
+        run: python -m pytest tests -q -m "not integration"
+
+  integration:
+    name: integration · real scanners
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - name: Install whatsrisky and semgrep
+        run: uv pip install --system -e ".[dev]" semgrep
+      - name: Install trivy ${{ env.TRIVY_VERSION }}
+        run: |
+          curl -sSLf "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | tar -xz -C /usr/local/bin trivy
+      - name: Install gitleaks ${{ env.GITLEAKS_VERSION }}
+        run: |
+          curl -sSLf "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      - name: Versions
+        run: whatsrisky doctor || true
+      - name: Integration tests
+        run: python -m pytest tests -q -m integration
+
+  selfscan:
+    name: self-scan
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - name: Install whatsrisky and semgrep
+        run: uv pip install --system -e ".[dev]" semgrep
+      - name: Install gitleaks ${{ env.GITLEAKS_VERSION }}
+        run: |
+          curl -sSLf "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      # Dogfooding: whatsrisky must stay clean under its own HIGH bar.
+      - name: Scan ourselves
+        run: whatsrisky . --tools semgrep,gitleaks --format json --fail-on high
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: self-scan-report
+          path: whatsrisky-reports/
