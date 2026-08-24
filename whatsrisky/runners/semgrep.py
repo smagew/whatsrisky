@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from ..models import Finding, Severity
-from ..util import read_snippet, relative, run, truncate
+from ..util import read_snippet, relative, run_streaming, truncate
 from .base import Runner
 
 # Semgrep speaks ERROR/WARNING/INFO (and CRITICAL/HIGH/... in newer versions).
@@ -38,7 +38,8 @@ class SemgrepRunner(Runner):
 
     def _argv(self) -> list[str]:
         cfg = self.config
-        argv = [self.binary, "scan", "--json", "--quiet", "--timeout", "60", "--max-target-bytes", "2000000"]
+        # No --quiet: its stderr is where the scan plan and progress live.
+        argv = [self.binary, "scan", "--json", "--timeout", "60", "--max-target-bytes", "2000000"]
         uses_auto = any(c == "auto" for c in cfg.semgrep_configs)
         # `--config auto` needs metrics enabled; everything else runs fully offline.
         argv += ["--metrics", "auto" if uses_auto else "off"]
@@ -53,7 +54,9 @@ class SemgrepRunner(Runner):
     def scan(self):
         cfg = self.config
         argv = self._argv()
-        res = run(argv, cwd=cfg.target, timeout=cfg.semgrep_timeout)
+        res = run_streaming(
+            argv, cwd=cfg.target, timeout=cfg.semgrep_timeout, on_stderr=self._report_line
+        )
         data = None
         if res.stdout.strip():
             try:
@@ -110,6 +113,20 @@ class SemgrepRunner(Runner):
                 )
             )
         return findings, res.command, res.stderr
+
+
+    # Semgrep frames its status in box-drawing characters; only the prose is useful.
+    _NOISE = set("┌┐└┘─│├┤┬┴┼ ")
+
+    def _report_line(self, line: str) -> None:
+        text = line.strip()
+        if not text or set(text) <= self._NOISE:
+            return
+        lowered = text.lower()
+        if lowered.startswith("language") or "--verbose flag" in lowered:
+            return  # column headers and hints, not progress
+        if any(k in lowered for k in ("scanning", "rules run", "findings", "ran ", "error", "skipped")):
+            self.progress(text)
 
 
 def _title(rule_id: str, message: str) -> str:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from ..models import Finding, Severity
-from ..util import read_snippet, relative, run, truncate
+from ..util import read_snippet, relative, run_streaming, truncate
 from .base import Runner
 
 
@@ -40,7 +40,6 @@ class TrivyRunner(Runner):
             str(out_file),
             "--exit-code",
             "0",
-            "--quiet",
         ]
         if cfg.trivy_offline:
             argv += ["--offline-scan", "--skip-db-update", "--skip-java-db-update"]
@@ -48,7 +47,9 @@ class TrivyRunner(Runner):
             argv += ["--skip-dirs", pattern.rstrip("/")]
         argv.append(".")
 
-        res = run(argv, cwd=cfg.target, timeout=cfg.trivy_timeout)
+        res = run_streaming(
+            argv, cwd=cfg.target, timeout=cfg.trivy_timeout, on_stderr=self._report_line
+        )
         if cfg.diff_range:
             # A dependency CVE is a property of the manifest, not of the diff: a lockfile
             # untouched by this range can still be vulnerable. Scanning the whole tree is
@@ -82,6 +83,10 @@ class TrivyRunner(Runner):
         return result
 
     # --- sections -----------------------------------------------------
+    def _report_line(self, line: str) -> None:
+        if any(level in line for level in ("\tINFO\t", "\tWARN\t", "\tERROR\t")):
+            self.progress(_trivy_message(line))
+
     def _vulns(self, result: dict, target: str, pkg_type: str) -> list[Finding]:
         out = []
         for v in result.get("Vulnerabilities") or []:
@@ -167,6 +172,14 @@ class TrivyRunner(Runner):
                 )
             )
         return out
+
+
+def _trivy_message(line: str) -> str:
+    """Strip the timestamp and level from a trivy log line, keep the rest."""
+    parts = [p.strip() for p in line.split("\t")]
+    if len(parts) >= 3:
+        return " ".join(p for p in parts[2:] if p)
+    return line.strip()
 
 
 def _cvss(v: dict) -> str:

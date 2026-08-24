@@ -9,8 +9,10 @@ cheaper conversion call because the slash command answers in prose.
 
 from __future__ import annotations
 
+import json
+
 from ..models import Finding, Severity, ToolResult
-from ..util import extract_json, read_snippet, relative, run, truncate
+from ..util import extract_json, read_snippet, relative, run_streaming, truncate
 from .base import Runner
 
 READ_ONLY_TOOLS = ",".join(
@@ -112,6 +114,33 @@ JSON shape:
 """
 
 
+def _describe_tool_use(block: dict) -> str:
+    """`Read app.py` reads better than a raw tool_use payload."""
+    name = block.get("name") or "tool"
+    args = block.get("input") or {}
+    for key in ("file_path", "path", "pattern", "command", "query", "notebook_path"):
+        value = args.get(key)
+        if value:
+            return f"{name}: {str(value)[:120]}"
+    return name
+
+
+def _final_result(stream: str) -> dict | None:
+    """Pick the terminal `result` event out of a stream-json transcript."""
+    payload: dict | None = None
+    for line in (stream or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "result":
+            payload = event
+    return payload
+
+
 class ClaudeRunner(Runner):
     name = "claude"
     binary = "claude"
@@ -131,6 +160,26 @@ class ClaudeRunner(Runner):
         return f"claude {tool_version(self.binary)} (model: {self.config.claude_model})"
 
     # --- claude invocation --------------------------------------------
+    def _stream_line(self, line: str) -> None:
+        """Turn one stream-json event into a progress message."""
+        line = line.strip()
+        if not line.startswith("{"):
+            return
+        try:
+            event = json.loads(line)
+        except ValueError:
+            return
+        if event.get("type") != "assistant":
+            return
+        for block in event.get("message", {}).get("content", []) or []:
+            kind = block.get("type")
+            if kind == "tool_use":
+                self.progress(_describe_tool_use(block))
+            elif kind == "text":
+                text = (block.get("text") or "").strip().splitlines()
+                if text and not text[0].lstrip().startswith(("{", "[")):
+                    self.progress(text[0])
+
     def _invoke(self, prompt: str, model: str, label: str) -> tuple[str, str, str]:
         cfg = self.config
         argv = [
@@ -139,18 +188,26 @@ class ClaudeRunner(Runner):
             prompt,
             "--model",
             model,
+            # stream-json reports each step as it happens; json would only speak at the end.
             "--output-format",
-            "json",
+            "stream-json",
+            "--verbose",
             "--allowed-tools",
             READ_ONLY_TOOLS,
         ]
-        res = run(argv, cwd=cfg.target, timeout=cfg.claude_timeout)
-        raw_path = cfg.work_dir / f"claude-{label}.raw.json"
+        self.progress(f"{label} pass: starting {model}")
+        res = run_streaming(
+            argv,
+            cwd=cfg.target,
+            timeout=cfg.claude_timeout,
+            on_stdout=self._stream_line,
+        )
+        raw_path = cfg.work_dir / f"claude-{label}.raw.jsonl"
         raw_path.write_text(res.stdout or "", encoding="utf-8")
         if res.timed_out:
             raise RuntimeError(f"claude {label} pass timed out after {cfg.claude_timeout}s")
 
-        payload = extract_json(res.stdout)
+        payload = _final_result(res.stdout)
         if isinstance(payload, dict) and "result" in payload:
             if payload.get("is_error"):
                 raise RuntimeError(f"claude {label} pass failed: {truncate(str(payload.get('result')), 400)}")
@@ -175,6 +232,8 @@ class ClaudeRunner(Runner):
     def _pass_full(self) -> tuple[list[Finding], list[str], list[str]]:
         cfg = self.config
         prompt = FULL_PROMPT.replace("{max_findings}", str(cfg.claude_max_findings))
+        if cfg.exclude:
+            prompt += "\nIgnore these paths entirely: " + ", ".join(cfg.exclude[:40]) + "\n"
         if cfg.scope_paths:
             listed = "\n".join(f"- {p}" for p in cfg.scope_paths[:200])
             prompt += (

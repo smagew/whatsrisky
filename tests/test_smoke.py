@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from whatsrisky.models import Finding, ScanReport, Severity, ToolResult
@@ -189,3 +190,107 @@ def test_ui_collects_and_previews(tmp_path, monkeypatch):
             assert reloaded.fail_on == "high"
 
     asyncio.run(drive())
+
+
+# --- exclusions -------------------------------------------------------
+def test_path_excluded_semantics():
+    from whatsrisky.util import path_excluded, pattern_to_regex
+
+    assert path_excluded("node_modules/pkg/a.js", ["node_modules"])
+    assert path_excluded("src/node_modules/a.js", ["node_modules"])  # any depth
+    assert not path_excluded("src/app.py", ["node_modules"])
+    assert path_excluded("src/generated/api.py", ["src/generated"])  # subtree
+    assert not path_excluded("src/generated_other/api.py", ["src/generated"])
+    assert path_excluded("dist/app.min.js", ["*.min.js"])  # glob
+    assert not path_excluded("src/app.js", ["*.min.js"])
+    assert path_excluded("vendor/lib/x.go", ["vendor/"])  # trailing slash tolerated
+    assert not path_excluded("", ["vendor"])
+    # gitleaks needs Go-compatible regexes, not Python's fnmatch translation
+    assert pattern_to_regex("node_modules") == "(^|/)node_modules(/|$)"
+    assert "[^/]*" in pattern_to_regex("*.min.js")
+    assert pattern_to_regex("") == ""
+
+
+def test_effective_excludes_and_flag():
+    from whatsrisky.core import DEFAULT_EXCLUDES, ScanOptions
+
+    opts = ScanOptions(path=".", exclude=["mydir", "node_modules"])
+    effective = opts.effective_excludes()
+    assert "mydir" in effective
+    assert effective.count("node_modules") == 1  # de-duplicated against the defaults
+    assert len(effective) > len(DEFAULT_EXCLUDES) - 1
+
+    bare = ScanOptions(path=".", exclude=["mydir"], use_default_excludes=False)
+    assert bare.effective_excludes() == ["mydir"]
+    assert "--no-default-excludes" in bare.command_line()
+    assert "--exclude mydir" in bare.command_line()
+
+
+def test_own_output_is_never_scanned(tmp_path):
+    from whatsrisky.core import OUTPUT_MARKER, _self_output_excludes
+
+    target = tmp_path / "project"
+    (target / "src").mkdir(parents=True)
+    old_reports = target / "old-reports"
+    old_reports.mkdir()
+    (old_reports / OUTPUT_MARKER).write_text("x", encoding="utf-8")
+    out_dir = target / "reports"
+    out_dir.mkdir()
+
+    excludes = _self_output_excludes(target, out_dir, out_dir / ".work-x")
+    assert "reports" in excludes           # this run's output
+    assert "old-reports" in excludes       # a previous run's, found by its marker
+    assert "src" not in excludes           # ordinary directories are untouched
+
+    # Output written outside the target adds nothing, but marker-bearing directories
+    # inside it are still skipped - that is what keeps old reports out of a rescan.
+    outside = _self_output_excludes(target, tmp_path / "elsewhere")
+    assert outside == ["old-reports"]
+
+
+# --- progress ---------------------------------------------------------
+def test_progress_model_tracks_tools():
+    from whatsrisky.progress import ProgressModel
+
+    model = ProgressModel()
+    model.handle("info", {"message": "scanning /x", "tools": ["semgrep"]})
+    model.handle("tool_start", {"tool": "semgrep"})
+    assert model.running
+    model.handle("tool_progress", {"tool": "semgrep", "message": "Scanning 412 files"})
+    assert model.rows["semgrep"]["message"] == "Scanning 412 files"
+    assert model.elapsed("semgrep") >= 0
+
+    model.handle("tool_done", {"tool": "semgrep", "status": "ok", "findings": 7, "duration": 2.5})
+    assert not model.running
+    assert "7 findings" in model.line("semgrep")
+    assert model.elapsed("semgrep") == 2.5
+    # unknown tools must not raise: events can arrive for a runner that never started
+    model.handle("tool_progress", {"tool": "ghost", "message": "hi"})
+    assert "ghost" not in model.rows
+
+    table = model.render_table()
+    assert table.row_count == 1
+
+
+def test_run_streaming_reports_lines(tmp_path):
+    from whatsrisky.util import run_streaming
+
+    lines: list[str] = []
+    script = "import sys; print('to stdout'); print('step 1', file=sys.stderr); print('step 2', file=sys.stderr)"
+    res = run_streaming(
+        [sys.executable, "-c", script], timeout=30, on_stderr=lines.append
+    )
+    assert res.returncode == 0
+    assert lines == ["step 1", "step 2"]      # streamed, in order
+    assert "to stdout" in res.stdout
+
+    out_file = tmp_path / "out.txt"
+    res = run_streaming(
+        [sys.executable, "-c", "print('captured')"], timeout=30, stdout_path=out_file
+    )
+    assert out_file.read_text().strip() == "captured"
+
+    res = run_streaming([sys.executable, "-c", "import time; time.sleep(30)"], timeout=1)
+    assert res.timed_out and res.returncode == 124
+
+    assert run_streaming(["definitely-not-a-real-binary-xyz"]).returncode == 127

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..models import Finding, ToolResult
+from typing import Callable
+
 from ..util import clean_text, platform_key, tail, which
 
 
@@ -51,8 +53,20 @@ class Runner:
     # per-platform install instructions; "default" is the fallback
     install_hints: dict[str, str] = {}
 
-    def __init__(self, config: ScanConfig):
+    def __init__(self, config: ScanConfig, on_progress: Callable[[str], None] | None = None):
         self.config = config
+        self._on_progress = on_progress
+
+    def progress(self, message: str) -> None:
+        """Surface what the scanner is doing right now. Never fails the scan."""
+        if not self._on_progress:
+            return
+        text = clean_text(message).strip()
+        if text:
+            try:
+                self._on_progress(text[:160])
+            except Exception:
+                pass
 
     @property
     def install_hint(self) -> str:

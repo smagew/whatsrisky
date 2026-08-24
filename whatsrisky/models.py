@@ -193,6 +193,8 @@ class ScanReport:
     git_branch: str = ""
     diff_range: str = ""
     scope_paths: list[str] = field(default_factory=list)
+    excludes: list[str] = field(default_factory=list)
+    excluded_count: int = 0
     tools: list[ToolResult] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
 
@@ -251,6 +253,8 @@ class ScanReport:
             "git_branch": self.git_branch,
             "diff_range": self.diff_range,
             "scope_paths": self.scope_paths,
+            "excludes": self.excludes,
+            "excluded_findings": self.excluded_count,
             "risk_score": self.risk_score(),
             "verdict": self.verdict(),
             "counts": {s.value: n for s, n in self.counts().items()},

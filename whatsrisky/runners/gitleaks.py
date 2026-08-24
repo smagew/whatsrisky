@@ -6,8 +6,12 @@ import json
 import re
 
 from ..models import Finding, Severity
-from ..util import relative, run, truncate
+from ..util import pattern_to_regex, relative, run, run_streaming, truncate
 from .base import Runner
+
+TRIPLE = "'" * 3
+# gitleaks logs as "11:07PM INF message"; only the message is worth showing.
+_LOG_PREFIX = re.compile(r"^\d{1,2}:\d{2}(AM|PM)?\s+(INF|WRN|ERR|DBG|TRC)\s+", re.IGNORECASE)
 
 # Rules that match on shape/entropy alone produce more false positives than
 # provider-specific rules, so they land one notch lower.
@@ -58,6 +62,25 @@ class GitleaksRunner(Runner):
             return ["git"]
         return ["dir", "git"] if is_git_repo(self.config.target) else ["dir"]
 
+    def _exclude_config(self) -> str:
+        """gitleaks has no --exclude flag: paths are excluded through a config allowlist."""
+        patterns = [p for p in (pattern_to_regex(x) for x in self.config.exclude) if p]
+        if not patterns:
+            return ""
+        path = self.config.work_dir / "gitleaks-excludes.toml"
+        lines = [
+            "[extend]",
+            "useDefault = true",
+            "",
+            "[[allowlists]]",
+            'description = "whatsrisky excludes"',
+            "paths = [",
+        ]
+        lines += ["  " + TRIPLE + p + TRIPLE + "," for p in patterns]
+        lines.append("]")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(path)
+
     def _argv(self, mode: str, report: str) -> list[str]:
         cfg = self.config
         modern = self._version_tuple() >= (8, 19, 0)
@@ -72,6 +95,9 @@ class GitleaksRunner(Runner):
             "--redact",
         ]
         scoped = ["--log-opts", cfg.diff_range] if (mode == "git" and cfg.diff_range) else []
+        config_path = self._exclude_config()
+        if config_path:
+            scoped += ["--config", config_path]
         if modern:
             return [self.binary, mode, ".", *common, *scoped]
         argv = [self.binary, "detect", "--source", ".", *common, *scoped]
@@ -90,7 +116,13 @@ class GitleaksRunner(Runner):
             report = cfg.work_dir / f"gitleaks-{mode}.json"
             if report.exists():
                 report.unlink()
-            res = run(self._argv(mode, str(report)), cwd=cfg.target, timeout=cfg.gitleaks_timeout)
+            self.progress(f"scanning {'git history' if mode == 'git' else 'working tree'}")
+            res = run_streaming(
+                self._argv(mode, str(report)),
+                cwd=cfg.target,
+                timeout=cfg.gitleaks_timeout,
+                on_stderr=lambda line: self.progress(_LOG_PREFIX.sub("", line.strip())),
+            )
             commands.append(res.command)
             stderr_all.append(res.stderr)
             if not report.exists():

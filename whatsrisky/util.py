@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import platform
 import re
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 @dataclass
@@ -71,6 +74,97 @@ def run(
         )
     except FileNotFoundError as exc:
         return CmdResult(argv, 127, "", str(exc), time.monotonic() - started)
+
+
+def run_streaming(
+    argv: list[str],
+    cwd: str | Path | None = None,
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
+    on_stderr: Callable[[str], None] | None = None,
+    on_stdout: Callable[[str], None] | None = None,
+    stdout_path: str | Path | None = None,
+) -> CmdResult:
+    """Run a command, handing each output line to a callback as it arrives.
+
+    This is what makes progress reporting real: scanners describe what they are
+    doing on stderr, and we surface it live instead of after the fact.
+    """
+    full_env = os.environ.copy()
+    if env:
+        full_env.update(env)
+    started = time.monotonic()
+    out_file = open(stdout_path, "w", encoding="utf-8") if stdout_path else None
+    try:
+        # nosemgrep: python36-compatibility-Popen1 - requires-python is >=3.10
+        proc = subprocess.Popen(
+            argv,
+            cwd=str(cwd) if cwd else None,
+            stdout=out_file if out_file else subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            bufsize=1,
+            env=full_env,
+        )
+    except FileNotFoundError as exc:
+        if out_file:
+            out_file.close()
+        return CmdResult(argv, 127, "", str(exc), time.monotonic() - started)
+
+    finished = threading.Event()
+    timed_out = threading.Event()
+
+    def watchdog() -> None:
+        if not finished.wait(timeout):
+            timed_out.set()
+            proc.kill()
+
+    err_lines: list[str] = []
+
+    def pump(stream, sink: list[str], callback) -> None:
+        try:
+            for raw in stream:
+                line = raw.rstrip("\n")
+                sink.append(line)
+                if callback and line.strip():
+                    try:
+                        callback(line)
+                    except Exception:  # a broken UI must not kill the scan
+                        pass
+        except (OSError, ValueError):
+            pass
+
+    threads = [
+        threading.Thread(target=watchdog, daemon=True),
+        threading.Thread(target=pump, args=(proc.stderr, err_lines, on_stderr), daemon=True),
+    ]
+    out_lines: list[str] = []
+    if out_file is None:
+        threads.append(
+            threading.Thread(target=pump, args=(proc.stdout, out_lines, on_stdout), daemon=True)
+        )
+    for thread in threads:
+        thread.start()
+
+    proc.wait()
+    finished.set()
+    for thread in threads[1:]:
+        thread.join(timeout=10)
+    if out_file:
+        out_file.close()
+
+    stderr = "\n".join(err_lines)
+    if timed_out.is_set():
+        stderr += f"\n[whatsrisky] timed out after {timeout}s"
+    return CmdResult(
+        argv,
+        124 if timed_out.is_set() else proc.returncode,
+        "\n".join(out_lines),
+        stderr,
+        time.monotonic() - started,
+        timed_out=timed_out.is_set(),
+    )
 
 
 def _as_text(value) -> str:
@@ -215,6 +309,61 @@ def extract_json(text: str):
         return json.loads(repair_json_text(text))
     except (ValueError, TypeError):
         return None
+
+
+_GLOB_CHARS = "*?["
+
+
+def normalize_pattern(pattern: str) -> str:
+    return (pattern or "").strip().replace("\\", "/").strip("/")
+
+
+def path_excluded(rel_path: str, patterns: list[str]) -> bool:
+    """Does this project-relative path fall under one of the exclusions?
+
+    A bare name (`node_modules`) matches that path segment anywhere; a pattern
+    with a slash (`src/generated`) matches that subtree; a glob (`*.min.js`)
+    matches the whole path, the basename, or any single segment.
+    """
+    path = (rel_path or "").replace("\\", "/").strip("/")
+    if not path:
+        return False
+    segments = path.split("/")
+    for raw in patterns:
+        pattern = normalize_pattern(raw)
+        if not pattern:
+            continue
+        if any(ch in pattern for ch in _GLOB_CHARS):
+            if (
+                fnmatch.fnmatch(path, pattern)
+                or fnmatch.fnmatch(segments[-1], pattern)
+                or any(fnmatch.fnmatch(seg, pattern) for seg in segments)
+            ):
+                return True
+        elif "/" in pattern:
+            if path == pattern or path.startswith(pattern + "/"):
+                return True
+        elif pattern in segments:
+            return True
+    return False
+
+
+def pattern_to_regex(pattern: str) -> str:
+    """Exclusion pattern as a Go-compatible regex (for the gitleaks allowlist)."""
+    pattern = normalize_pattern(pattern)
+    if not pattern:
+        return ""
+    escaped = ""
+    for char in pattern:
+        if char == "*":
+            escaped += "[^/]*"
+        elif char == "?":
+            escaped += "[^/]"
+        else:
+            escaped += re.escape(char)
+    if "/" in pattern:
+        return f"(^|/){escaped}(/|$)"
+    return f"(^|/){escaped}(/|$)"
 
 
 def open_file(path) -> bool:

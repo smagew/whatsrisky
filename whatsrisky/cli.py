@@ -9,7 +9,9 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
+from rich.live import Live
 from rich.table import Table
+from rich.text import Text
 
 from . import __version__, settings
 from .core import (
@@ -21,10 +23,10 @@ from .core import (
     run_scan,
 )
 from .models import SEVERITY_ORDER, ScanReport, Severity
+from .progress import STATUS_STYLE, ProgressModel
 from .util import open_file, truncate, which
 
 console = Console()
-STATUS_STYLE = {"ok": "green", "missing": "yellow", "error": "red", "skipped": "dim"}
 
 
 # --- doctor -----------------------------------------------------------
@@ -114,6 +116,8 @@ def _options_from_args(args: argparse.Namespace) -> ScanOptions:
         options.exclude = args.exclude
     if args.offline:
         options.offline = True
+    if args.no_default_excludes:
+        options.use_default_excludes = False
     if args.keep_work:
         options.keep_work = True
     if args.open:
@@ -143,6 +147,57 @@ def _summary_table(report: ScanReport) -> Table:
     return table
 
 
+class ProgressView:
+    """CLI front end for ProgressModel: a live table on a terminal, plain lines otherwise."""
+
+    def __init__(self, target_console: Console):
+        self.console = target_console
+        self.model = ProgressModel()
+        self.live: Live | None = None
+
+    def start(self) -> None:
+        if self.console.is_terminal:
+            self.live = Live(
+                get_renderable=self.model.render_table,
+                console=self.console,
+                refresh_per_second=8,
+                transient=True,
+            )
+            self.live.start()
+
+    def stop(self) -> None:
+        if self.live:
+            self.live.stop()
+            self.live = None
+        for tool in self.model.order:
+            row = self.model.rows[tool]
+            if row["status"] != "running":
+                style = STATUS_STYLE.get(row["status"], "white")
+                self.console.print(Text("▪ " + self.model.line(tool), style=style))
+
+    def handle(self, kind: str, payload: dict) -> None:
+        if kind == "info":
+            self.console.print(f"[bold]whatsrisky {__version__}[/] {payload['message']}")
+            line = f"scanners: {', '.join(payload['tools'])}"
+            if "claude" in payload["tools"]:
+                line += f"  ·  claude: {payload['model']} ({payload['claude_mode']})"
+            self.console.print(line)
+            return
+        if kind == "report":
+            return
+        self.model.handle(kind, payload)
+        if not self.live:
+            self._print_plain(kind, payload.get("tool", ""))
+
+    def _print_plain(self, kind: str, tool: str) -> None:
+        if kind == "tool_start":
+            self.console.print(f"[cyan]▸ {tool}[/] started")
+        elif kind == "tool_progress" and tool in self.model.rows:
+            self.console.print(
+                Text(f"  {tool}: {self.model.rows[tool]['message']}", style="dim"), highlight=False
+            )
+
+
 def _on_event(kind: str, payload: dict) -> None:
     if kind == "info":
         console.print(f"[bold]whatsrisky {__version__}[/] {payload['message']}")
@@ -162,6 +217,13 @@ def _on_event(kind: str, payload: dict) -> None:
 
 def cmd_scan(args: argparse.Namespace) -> int:
     options = _options_from_args(args)
+    if args.show_excludes:
+        patterns = options.effective_excludes()
+        console.print(f"[bold]{len(patterns)} exclusion pattern(s)[/] in effect:")
+        for pattern in patterns:
+            source = "user" if pattern in options.exclude else "default"
+            console.print(f"  {pattern}  [dim]({source})[/]")
+        return 0
     machine = args.json_stdout
     if machine:
         # stdout belongs to the JSON payload; everything else goes to stderr.
@@ -181,11 +243,19 @@ def cmd_scan(args: argparse.Namespace) -> int:
         console.print(f"[green]saved profile[/] {args.save_profile}")
     settings.save_last(options)
 
+    view = None if quiet else ProgressView(console)
+    if view:
+        view.start()
     try:
-        outcome = run_scan(options, None if quiet else _on_event)
+        outcome = run_scan(options, view.handle if view else None)
     except ValueError as exc:
+        if view:
+            view.stop()
         console.print(f"[red]{exc}[/]")
         return 1
+    finally:
+        if view:
+            view.stop()
 
     if machine:
         sys.stdout.write(json.dumps(outcome.report.to_dict(), indent=2, ensure_ascii=False) + "\n")
@@ -199,6 +269,11 @@ def cmd_scan(args: argparse.Namespace) -> int:
             console.print(
                 f"[{STATUS_STYLE.get(tool.status, 'yellow')}]! {tool.name} {tool.status}[/]: "
                 f"{truncate(tool.message, 200)}"
+            )
+        if outcome.report.excluded_count:
+            console.print(
+                f"[dim]{outcome.report.excluded_count} finding(s) dropped by exclusions "
+                f"({len(outcome.report.excludes)} patterns; --show-excludes to list)[/]"
             )
         for path in outcome.written:
             console.print(f"[green]report[/] {path}")
@@ -274,7 +349,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--trivy-scanners", help="trivy --scanners value (add ,secret to duplicate gitleaks coverage)"
     )
     scan.add_argument("--gitleaks-mode", choices=["auto", "dir", "git"])
-    scan.add_argument("--exclude", action="append", help="path/glob to exclude, repeatable")
+    scan.add_argument(
+        "--exclude",
+        action="append",
+        help="directory, path or glob to skip, repeatable (e.g. --exclude vendor --exclude '*.min.js')",
+    )
+    scan.add_argument(
+        "--no-default-excludes",
+        action="store_true",
+        help="also scan node_modules, vendor, dist and the rest of the default skip list",
+    )
+    scan.add_argument(
+        "--show-excludes", action="store_true", help="print the effective skip list and exit"
+    )
     scan.add_argument("--offline", action="store_true", help="no network: skip trivy DB update")
     scan.add_argument("--timeout", type=int, help="per-scanner timeout in seconds")
     scan.add_argument("--jobs", type=int, help="scanners to run in parallel (1 = sequential)")

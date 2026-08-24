@@ -40,6 +40,7 @@ is missing and how to get it on your platform. The Claude pass additionally need
 whatsrisky ~/www/app                      # semgrep + trivy + gitleaks, reports in ./whatsrisky-reports
 whatsrisky ~/www/app --ai                 # add the Claude review pass (costs tokens)
 whatsrisky ~/www/app --diff HEAD~1..HEAD  # only what this range changed
+whatsrisky ~/www/app --exclude legacy --exclude '*.generated.py'
 whatsrisky ~/www/app --min-severity HIGH --open
 whatsrisky ~/www/app --fail-on high       # exit 2 for CI when HIGH+ exists
 whatsrisky                                # no arguments: the settings UI
@@ -68,6 +69,45 @@ whatsrisky profiles                                 # list  ·  --delete NAME to
 
 Everything lives in `~/.config/whatsrisky/config.json`; the last run is remembered.
 
+### What gets skipped
+
+Vendored and generated code produces findings nobody can act on, in code nobody in the project
+wrote, so a default skip list is applied: `node_modules`, `vendor`, `.venv`, `dist`, `build`,
+`target`, `.next`, `__pycache__`, caches, minified bundles and the like.
+
+```bash
+whatsrisky . --show-excludes                 # the effective list, and where each entry came from
+whatsrisky . --exclude legacy --exclude '*.pb.go'
+whatsrisky . --no-default-excludes           # scan the vendored code too
+```
+
+A bare name (`legacy`) matches that directory at any depth; a pattern with a slash
+(`src/generated`) matches that subtree; a glob (`*.min.js`) matches the path, the basename or any
+single segment. In the UI, the top of the form lists the project's own directories as checkboxes —
+click the ones to skip instead of typing patterns.
+
+Exclusions reach every scanner, including the ones with no flag for it: gitleaks gets a generated
+allowlist config, and the AI pass is told which paths to ignore. Anything that still slips through is
+dropped afterwards and **counted** — the report says how many findings the exclusions removed,
+rather than quietly shrinking.
+
+The tool also never scans its own output: report directories are marked, so a second run does not
+rediscover the secrets quoted in the first run's report.
+
+### Progress
+
+Long scans are not silent. Each scanner reports what it is doing right now, live:
+
+```
+⠹ semgrep    12s  Scanning 412 files tracked by git with 1074 Code rules
+▪ trivy       2s  20 findings · ok
+⠙ claude     47s  Read src/auth/session.py
+```
+
+That last line is real: the AI pass runs with `--output-format stream-json`, so you see which files
+the reviewer is opening instead of watching a spinner for four minutes. On a non-terminal (CI, pipes)
+the same information is printed as plain lines.
+
 ### Flags that matter
 
 - `--ai` — add the Claude pass. Naming `--model` or `--claude-mode` implies it.
@@ -77,7 +117,8 @@ Everything lives in `~/.config/whatsrisky/config.json`; the last run is remember
 - `--tools semgrep,trivy` / `--skip gitleaks` — pick scanners.
 - `--min-severity HIGH`, `--max-per-severity 25` — trim the document (JSON keeps everything).
 - `--fail-on critical|high|…` — exit 2 for CI.
-- `--exclude node_modules --exclude dist` — repeatable.
+- `--exclude legacy --exclude '*.min.js'` — repeatable; `--no-default-excludes` to keep vendored
+  code in scope; `--show-excludes` to print the effective list.
 - `--offline` — no network; Trivy skips its DB update and Semgrep falls back to `p/security-audit`.
 - `--quiet` / `--json-stdout` — machine-readable output, see **Embedding** below.
 
@@ -129,6 +170,8 @@ These are deliberate, not oversights:
 - **`--diff` does not scope Trivy.** A dependency CVE is a property of the manifest, not of the
   changed lines: a lockfile untouched by your range can still be vulnerable. Trivy scans the whole
   tree and the report says so, instead of quietly reporting "0 findings" for a diff.
+- **Exclusions are counted, not silent.** Dropping a finding is a decision; the report records how
+  many were dropped and which patterns were in effect.
 - **A missing scanner is not a clean result.** Section 2 of the report lists coverage gaps for
   exactly this reason, and the JSON `tools[].status` tells a machine the same thing.
 - **The risk score ranks, it does not measure.** `100·(1−e^(−Σweights/120))` saturates by design.
@@ -165,6 +208,7 @@ secret scanners or GitHub push protection.
 - `whatsrisky/runners/` — one module per scanner, each returning normalized `Finding` objects.
 - `whatsrisky/report/` — DOCX and Markdown writers.
 - `whatsrisky/ui.py` — Textual settings + progress UI. `whatsrisky/settings.py` — persisted profiles.
+- `whatsrisky/progress.py` — one progress model, rendered by both the CLI and the UI.
 - `schema/report.schema.json` — the JSON contract for other tools.
 
 ## License

@@ -24,13 +24,16 @@ from textual.widgets import (
     RichLog,
     Rule,
     Select,
+    SelectionList,
     Static,
 )
+from textual.widgets.selection_list import Selection
 
 from . import __version__, settings
 from .util import open_file
 from .core import (
     ALL_TOOLS,
+    DEFAULT_EXCLUDES,
     FAIL_ON_CHOICES,
     FORMAT_CHOICES,
     MODEL_CHOICES,
@@ -41,6 +44,8 @@ from .core import (
     validate,
 )
 from .models import SEVERITY_ORDER
+from .progress import ProgressModel
+from .util import path_excluded
 
 SEVERITY_STYLE = {
     "CRITICAL": "bold red",
@@ -72,12 +77,14 @@ class RunScreen(Screen):
         super().__init__()
         self.options = options
         self.outcome: ScanOutcome | None = None
+        self.progress = ProgressModel()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Vertical(id="run-body"):
             yield Static(f"[b]scanning[/] {self.options.path}", id="run-title")
             yield Static(f"[dim]{self.options.command_line()}[/]", id="run-cmd")
+            yield Static(id="run-progress")
             yield RichLog(id="run-log", markup=True, wrap=True, highlight=False)
             yield Static("", id="run-summary")
             with Horizontal(id="run-buttons"):
@@ -93,7 +100,13 @@ class RunScreen(Screen):
         if "claude" in self.options.tools:
             log.write(f"claude: model={self.options.model} mode={self.options.claude_mode}")
         log.write("")
+        # Repaint on a timer so elapsed time keeps moving even while a scanner is silent.
+        self.set_interval(0.2, self._paint_progress)
         self.execute()
+
+    def _paint_progress(self) -> None:
+        if self.progress.order:
+            self.query_one("#run-progress", Static).update(self.progress.render_table())
 
     # --- worker -------------------------------------------------------
     @work(thread=True, exclusive=True)
@@ -109,11 +122,14 @@ class RunScreen(Screen):
         self.app.call_from_thread(self._finished, outcome)
 
     def _handle_event(self, kind: str, payload: dict) -> None:
+        self.progress.handle(kind, payload)
         log = self.query_one("#run-log", RichLog)
         if kind == "info":
             log.write(f"[cyan]▸[/] {payload['message']}")
         elif kind == "tool_start":
             log.write(f"[cyan]▸ {payload['tool']}[/] started")
+        elif kind == "tool_progress":
+            return  # the table shows it; the log would drown in it
         elif kind == "tool_done":
             style = STATUS_STYLE.get(payload["status"], "white")
             line = (
@@ -133,6 +149,7 @@ class RunScreen(Screen):
 
     def _finished(self, outcome: ScanOutcome) -> None:
         self.outcome = outcome
+        log = self.query_one("#run-log", RichLog)
         report = outcome.report
         counts = report.counts()
         cells = "   ".join(
@@ -156,6 +173,10 @@ class RunScreen(Screen):
             summary.append(f"[red]exit code {outcome.exit_code}[/] (--fail-on {self.options.fail_on})")
         self.query_one("#run-summary", Static).update("\n".join(summary))
         self.query_one("#run-title", Static).update(f"[b green]done[/] {self.options.path}")
+        if outcome.report.excluded_count:
+            log.write(
+                f"[dim]{outcome.report.excluded_count} finding(s) dropped by exclusions[/]"
+            )
         if any(p.suffix == ".docx" for p in outcome.written):
             self.query_one("#open", Button).disabled = False
         self.notify(f"{len(report.findings)} findings · {report.verdict()}", timeout=8)
@@ -211,6 +232,24 @@ class SettingsScreen(Screen):
                 yield Input(value=opts.path, placeholder="/path/to/project", id="path")
                 yield Label("scope to a git range (blank = whole project)", classes="field")
                 yield Input(value=opts.diff, placeholder="HEAD~1..HEAD  ·  main...HEAD", id="diff")
+
+                yield Label("[b]Skip these directories[/]", classes="section")
+                yield Label(
+                    "click to skip; vendored/build dirs are already skipped below",
+                    classes="field",
+                )
+                yield SelectionList[str](id="skip-dirs")
+                yield Checkbox(
+                    "also skip the default list (node_modules, vendor, dist, …)",
+                    value=opts.use_default_excludes,
+                    id="use-default-excludes",
+                )
+                yield Label("extra patterns, comma separated", classes="field")
+                yield Input(
+                    value=",".join(opts.exclude),
+                    placeholder="*.min.js, src/generated",
+                    id="exclude",
+                )
 
                 yield Label("[b]Scanners[/]", classes="section")
                 with Horizontal(classes="pair"):
@@ -278,11 +317,6 @@ class SettingsScreen(Screen):
                     allow_blank=False,
                     id="fail-on",
                 )
-                yield Label("exclude paths (comma separated)", classes="field")
-                yield Input(
-                    value=",".join(opts.exclude), placeholder="node_modules,dist,vendor", id="exclude"
-                )
-
                 yield Label("[b]Scanner tuning[/]", classes="section")
                 yield Label("semgrep --config (comma separated)", classes="field")
                 yield Input(value=",".join(opts.semgrep_configs), id="semgrep-configs")
@@ -330,6 +364,63 @@ class SettingsScreen(Screen):
         self._refresh_profiles()
         self._refresh_preview()
         self.probe()
+        self.scan_dirs()
+
+    @on(Input.Submitted, "#path")
+    @on(Checkbox.Changed, "#use-default-excludes")
+    def _path_changed(self) -> None:
+        self.scan_dirs()
+
+    # --- directory picker ---------------------------------------------
+    def _picked_dirs(self) -> list[str]:
+        try:
+            return list(self.query_one("#skip-dirs", SelectionList).selected)
+        except Exception:
+            return []
+
+    def _exclusions(self) -> list[str]:
+        """Picked directories plus hand-written patterns, in a stable order."""
+        out: list[str] = []
+        for pattern in self._picked_dirs() + _csv(self.query_one("#exclude", Input).value):
+            if pattern and pattern not in out:
+                out.append(pattern)
+        return out
+
+    @work(thread=True, exclusive=True, group="dirs")
+    def scan_dirs(self) -> None:
+        path = Path(self.query_one("#path", Input).value.strip()).expanduser()
+        defaults_on = self.query_one("#use-default-excludes", Checkbox).value
+        picked = set(self._picked_dirs())
+        entries: list[tuple[str, int, bool]] = []
+        if path.is_dir():
+            try:
+                for child in sorted(path.iterdir(), key=lambda p: p.name.lower()):
+                    if not child.is_dir():
+                        continue
+                    # Already covered by the default list? Then it is not a choice to make.
+                    if defaults_on and path_excluded(child.name, DEFAULT_EXCLUDES):
+                        continue
+                    try:
+                        count = sum(1 for _ in child.rglob("*") if _.is_file())
+                    except OSError:
+                        count = 0
+                    entries.append((child.name, count, child.name in picked))
+            except OSError:
+                pass
+        self.app.call_from_thread(self._show_dirs, entries)
+
+    def _show_dirs(self, entries: list[tuple[str, int, bool]]) -> None:
+        widget = self.query_one("#skip-dirs", SelectionList)
+        widget.clear_options()
+        if not entries:
+            widget.display = False
+            return
+        widget.display = True
+        widget.add_options(
+            Selection(f"{name}  ({count} files)" if count else name, name, selected)
+            for name, count, selected in entries
+        )
+        widget.styles.height = min(10, max(3, len(entries) + 1))
 
     # --- scanner availability -----------------------------------------
     @work(thread=True)
@@ -376,7 +467,8 @@ class SettingsScreen(Screen):
             semgrep_configs=_csv(self.query_one("#semgrep-configs", Input).value) or ["auto"],
             trivy_scanners=self.query_one("#trivy-scanners", Input).value.strip() or "vuln,misconfig",
             gitleaks_mode=str(self.query_one("#gitleaks-mode", Select).value),
-            exclude=_csv(self.query_one("#exclude", Input).value),
+            exclude=self._exclusions(),
+            use_default_excludes=self.query_one("#use-default-excludes", Checkbox).value,
             offline=self.query_one("#offline", Checkbox).value,
             timeout=self._int("timeout", 1800),
             jobs=self._int("jobs", 4),
@@ -409,7 +501,10 @@ class SettingsScreen(Screen):
         self.query_one("#min-severity", Select).value = opts.min_severity
         self.query_one("#max-per-severity", Input).value = str(opts.max_per_severity or "")
         self.query_one("#fail-on", Select).value = opts.fail_on
-        self.query_one("#exclude", Input).value = ",".join(opts.exclude)
+        self.query_one("#exclude", Input).value = ",".join(
+            p for p in opts.exclude if p not in self._picked_dirs()
+        )
+        self.query_one("#use-default-excludes", Checkbox).value = opts.use_default_excludes
         self.query_one("#semgrep-configs", Input).value = ",".join(opts.semgrep_configs)
         self.query_one("#trivy-scanners", Input).value = opts.trivy_scanners
         self.query_one("#gitleaks-mode", Select).value = opts.gitleaks_mode
@@ -439,12 +534,16 @@ class SettingsScreen(Screen):
                 notes.append("[dim]•[/] opus is the priciest pass; sonnet is ~5x cheaper")
         if opts.diff and "trivy" in opts.tools:
             notes.append("[dim]•[/] trivy ignores --diff (CVEs are manifest-wide)")
+        skipped = len(opts.effective_excludes())
+        if skipped:
+            notes.append(f"[dim]•[/] skipping {skipped} pattern(s); see the command above")
         self.query_one("#run", Button).disabled = bool(problems)
         panel.update("\n".join(notes) if notes else "[green]ready to run[/]")
 
     @on(Input.Changed)
     @on(Checkbox.Changed)
     @on(Select.Changed)
+    @on(SelectionList.SelectedChanged)
     def _any_change(self) -> None:
         self._refresh_preview()
 
@@ -529,6 +628,8 @@ class WhatsriskyApp(App):
     #side Button { width: 1fr; }
     #run-body { padding: 1 2; height: 1fr; }
     #run-log { height: 1fr; border: round $panel; padding: 0 1; }
+    #run-progress { padding: 1 0; }
+    #skip-dirs { height: auto; max-height: 10; border: tall $panel; }
     #run-summary { padding: 1 0; }
     #run-buttons { height: auto; }
     #run-buttons Button { margin-right: 2; }
