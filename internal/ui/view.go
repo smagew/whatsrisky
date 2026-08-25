@@ -31,90 +31,35 @@ func (m *Model) header() string {
 }
 
 // --- settings --------------------------------------------------------
+// --- settings --------------------------------------------------------
 
-// bodyLine is one rendered line of the form, tagged with the field it belongs to
-// so the viewport can keep the cursor visible and the mouse can hit it.
-type bodyLine struct {
-	text string
-	row  int // -1 for a section heading or a hint
-}
-
+// settingsView is the form beside what the form implies: the equivalent command,
+// the scanners actually installed, and anything worth warning about before a run.
 func (m *Model) settingsView() string {
-	options := m.collect().Normalized()
-	body := m.formLines(options)
-	header := m.header()
-	footer := m.footer()
+	options := m.collect()
+	form := m.form.View()
 
-	// The form is taller than most terminals, so it scrolls. Without this the
-	// bottom sections and the key bindings were simply cut off - which is how a
-	// form with no visible way to act reads as broken.
-	visible := m.bodyHeight()
-	m.clampOffset(body, visible)
-	window, above, below := windowLines(body, m.offset, visible)
-
-	var form strings.Builder
-	form.WriteString(header + "\n")
-	if above > 0 {
-		form.WriteString(dimStyle.Render(fmt.Sprintf("  ↑ %d more", above)) + "\n")
-	} else {
-		form.WriteString("\n")
-	}
-	for _, line := range window {
-		form.WriteString(line.text + "\n")
-	}
-	if below > 0 {
-		form.WriteString(dimStyle.Render(fmt.Sprintf("  ↓ %d more", below)) + "\n")
-	}
-	form.WriteString(footer)
-
-	side := m.sidePanel(options)
 	if m.width < 100 {
-		// Narrow: the panel cannot sit beside the form, but dropping it takes the
-		// equivalent command with it - which is the thing that makes this UI worth
-		// using. Keep that much, stacked.
-		return form.String() + "\n" + m.narrowPanel(options)
+		// Narrow: no room for a column. Dropping the panel would take the
+		// equivalent command with it - the thing that makes this UI worth using -
+		// so keep that much, stacked.
+		return m.header() + "\n" + form + "\n" + m.narrowPanel(options)
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(m.formWidth()+4).Render(form.String()),
-		panelStyle.Width(m.width-m.formWidth()-8).MaxHeight(maxInt(8, m.height-2)).Render(side))
+	panelWidth := m.panelWidth()
+	body := lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(m.formWidth()+2).Render(form),
+		panelStyle.Width(panelWidth).
+			Height(maxInt(8, m.bodyHeight())).Render(m.sidePanel(options, panelWidth)))
+	return m.header() + "\n" + body + "\n" + m.footer()
 }
 
-// formLines renders every row, and records where the cursor's row sits.
-func (m *Model) formLines(options scan.Options) []bodyLine {
-	width := m.formWidth()
-	var out []bodyLine
-	section := ""
-	for index, entry := range m.rows {
-		if entry.section != section {
-			section = entry.section
-			out = append(out, bodyLine{text: sectionStyle.Render(section), row: -1})
-		}
-		focused := index == m.cursor
-		marker := "  "
-		label := labelStyle.Render(fmt.Sprintf("%-26s", entry.field.label()))
-		if focused {
-			marker = focusStyle.Render("› ")
-			label = focusStyle.Render(fmt.Sprintf("%-26s", entry.field.label()))
-		}
-		value := entry.field.render(focused, width)
-		if !focused {
-			// A long path used to wrap to column zero and break the column.
-			value = shorten(value, maxInt(20, width-30))
-		}
-		out = append(out, bodyLine{text: marker + label + value, row: index})
-		if focused && entry.field.hint() != "" {
-			out = append(out, bodyLine{text: "    " + dimStyle.Render(entry.field.hint()), row: -1})
-		}
-	}
-	return out
-}
-
-// footer is pinned: the primary action and the keys must never scroll away.
 func (m *Model) footer() string {
 	var out strings.Builder
 	out.WriteString(actionStyle.Render(" ▶ ctrl+r  run scan ") + "  " +
 		dimStyle.Render("ctrl+s save profile · ctrl+q quit") + "\n")
-	out.WriteString(helpStyle.Render("↑↓ move · ←→ or space change · click a row to jump to it"))
+	// No key list here on purpose: the form prints the keys that apply to the
+	// field you are on, which beats a fixed line that has to be kept true. The
+	// mouse hint used to live here and outlived the mouse.
 	if m.notice != "" {
 		out.WriteString("\n" + warnStyle.Render(shorten(m.notice, maxInt(30, m.formWidth()))))
 	}
@@ -133,7 +78,7 @@ func (m *Model) narrowPanel(options scan.Options) string {
 
 // bodyHeight is what is left for the form after the header and the pinned footer.
 func (m *Model) bodyHeight() int {
-	chrome := 6 // header, the two scroll hints, and the two footer lines
+	chrome := 4 // the header, the form's own help line, and the action line
 	if m.width < 100 {
 		chrome += 3 // the stacked command and warning
 	}
@@ -148,70 +93,59 @@ func (m *Model) bodyHeight() int {
 }
 
 // clampOffset scrolls just enough to keep the focused row and its hint in view.
-func (m *Model) clampOffset(body []bodyLine, visible int) {
-	if len(body) <= visible {
-		m.offset = 0
-		return
-	}
-	first, last := -1, -1
-	for index, line := range body {
-		if line.row == m.cursor {
-			if first == -1 {
-				first = index
-			}
-			last = index
-		}
-		if first != -1 && line.row == -1 && index == last+1 {
-			last = index // the hint belongs to the focused row
-		}
-	}
-	if first == -1 {
-		return
-	}
-	if m.offset > first {
-		m.offset = first
-	}
-	if last >= m.offset+visible {
-		m.offset = last - visible + 1
-	}
-	if maximum := len(body) - visible; m.offset > maximum {
-		m.offset = maximum
-	}
-	if m.offset < 0 {
-		m.offset = 0
-	}
-}
-
-func windowLines(body []bodyLine, offset, visible int) ([]bodyLine, int, int) {
-	if offset < 0 {
-		offset = 0
-	}
-	end := offset + visible
-	if end > len(body) {
-		end = len(body)
-	}
-	return body[offset:end], offset, len(body) - end
-}
-
-// rowAt maps a screen line to the field on it, for the mouse.
-func (m *Model) rowAt(screenY int) int {
-	body := m.formLines(m.collect())
-	m.clampOffset(body, m.bodyHeight())
-	index := m.offset + screenY - 2 // the header and the scroll hint line
-	if index < 0 || index >= len(body) {
-		return -1
-	}
-	return body[index].row
-}
-
 func (m *Model) formWidth() int {
 	if m.width < 100 {
 		return maxInt(40, m.width-4)
 	}
-	return (m.width * 6) / 10
+	return m.width - m.panelWidth() - 6
 }
 
-func (m *Model) sidePanel(options scan.Options) string {
+// panelWidth is decided before the form's, not after. The panel carries the
+// equivalent command and the warnings, and starving it is what made both wrap
+// mid-phrase - a command broken inside an argument, a warning cut in half. The
+// form can absorb a narrower column; those two cannot.
+func (m *Model) panelWidth() int {
+	return minInt(48, maxInt(34, (m.width*35)/100))
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// wrapArguments breaks a command line between arguments, never inside one. A
+// token that cannot fit on its own is truncated with an ellipsis, because a
+// silently split path looks like a command you could copy, and is not.
+func wrapArguments(command string, width int) string {
+	if width < 8 {
+		width = 8
+	}
+	var lines []string
+	current := ""
+	for _, token := range strings.Fields(command) {
+		switch {
+		case current == "":
+			current = token
+		case len(current)+1+len(token) <= width:
+			current += " " + token
+		default:
+			lines = append(lines, current)
+			current = token
+		}
+		if len(current) > width {
+			lines = append(lines, shorten(current, width))
+			current = ""
+		}
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) sidePanel(options scan.Options, width int) string {
 	var out strings.Builder
 
 	out.WriteString(titleStyle.Render("Scanners on this machine") + "\n")
@@ -224,12 +158,15 @@ func (m *Model) sidePanel(options scan.Options) string {
 			if entry.found {
 				mark, style = okStyle.Render("✓"), dimStyle
 			}
-			out.WriteString(fmt.Sprintf("%s %-9s %s\n", mark, entry.name, style.Render(shorten(entry.detail, 34))))
+			// Truncated against the panel's real width, or the line both wraps
+			// and then gets an ellipsis - which reads as a rendering fault.
+			out.WriteString(fmt.Sprintf("%s %-9s %s\n", mark, entry.name,
+				style.Render(shorten(entry.detail, maxInt(12, width-12)))))
 		}
 	}
 
 	out.WriteString("\n" + titleStyle.Render("Equivalent command") + "\n")
-	out.WriteString(commandStyle.Render(options.CommandLine()) + "\n")
+	out.WriteString(commandStyle.Render(wrapArguments(options.CommandLine(), width)) + "\n")
 
 	out.WriteString("\n")
 	for _, warning := range m.warnings(options) {
@@ -238,8 +175,8 @@ func (m *Model) sidePanel(options scan.Options) string {
 
 	if names := profileNames(); len(names) > 0 {
 		out.WriteString("\n" + titleStyle.Render("Saved profiles") + "\n")
-		out.WriteString(dimStyle.Render(strings.Join(names, ", ")) + "\n")
-		out.WriteString(dimStyle.Render("start from one with: whatsrisky ui --profile NAME") + "\n")
+		out.WriteString(dimStyle.Render(shorten(strings.Join(names, ", "), width)) + "\n")
+		out.WriteString(dimStyle.Render(wrapArguments("start from one: whatsrisky ui --profile NAME", width)) + "\n")
 	}
 	return out.String()
 }

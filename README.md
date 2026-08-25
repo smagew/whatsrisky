@@ -89,11 +89,14 @@ missing API key, an AI backend asked to do something it cannot, how many pattern
 are being skipped.
 
 `ctrl+r` runs the scan, `ctrl+s` saves the current form as a named **profile**.
+`tab` and the arrows move; the form prints the keys that apply to the field you
+are on.
 
 ![settings UI](docs/tui-settings.png)
 
-The profile picker is the first thing in the form, and the one you saved is the one
-the next launch starts from — the header says which. Profiles work from the CLI
+Saving a profile is the last section, not the first: the first thing asked for
+should be what to scan, not what to call the settings you have not chosen yet. The
+one you saved is what the next launch starts from — the header says which. Profiles work from the CLI
 too, so the UI and CI share one configuration:
 
 ```bash

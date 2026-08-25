@@ -139,6 +139,25 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
 
 ## Gotchas
 
+- **Bubble Tea is a framework, not a widget set.** It gives an event loop and a
+  renderer; `bubbles` gives primitives. Reaching for it to build a form means
+  writing the form yourself, which is how a hand-rolled 1,379-line field/focus/
+  scroll layer shipped and had to be replaced by `huh`. Check whether the widget
+  exists before writing one.
+- **A Bubble Tea model must not drop unknown messages.** huh answers a keypress
+  with a command, and the message that command returns is what moves the focus.
+  A `switch` with no default silently breaks all navigation.
+- **huh's `WithWidth` does not re-wrap.** It moves the frame and leaves the field
+  descriptions wrapped for the old width. Rebuild the form on resize; fields bind
+  to variables, so nothing typed is lost.
+- **Never copy `theme.Focused` into `theme.Blurred`.** The focus bar is how the
+  user knows where they are; copying puts it on every field at once.
+- **A huh `Note` must not be the first field in a group.** Focus starting on a
+  skipped note renders the entire group as blank space.
+- **Testing a Bubble Tea model means running its commands.** Dropping them reports
+  a form that cannot be navigated. Running all of them waits on cursor-blink and
+  tick timers - this suite went to 578 seconds before those were bounded, so run
+  only what answers immediately.
 - **A tag pushed by `GITHUB_TOKEN` does not trigger other workflows.** GitHub
   blocks that recursion, so a tag-then-release split would silently never release.
   The release workflow creates the tag and publishes in one job for this reason.

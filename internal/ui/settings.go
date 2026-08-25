@@ -9,17 +9,9 @@ import (
 
 	"github.com/smagew/whatsrisky/internal/ai"
 	"github.com/smagew/whatsrisky/internal/config"
-	"github.com/smagew/whatsrisky/internal/model"
 	"github.com/smagew/whatsrisky/internal/runner"
 	"github.com/smagew/whatsrisky/internal/scan"
 )
-
-// row is a field with the section it belongs to. The sections are the reading
-// order: the profile you start from, then what to scan, then how.
-type row struct {
-	section string
-	field   field
-}
 
 type probeRow struct {
 	name   string
@@ -31,115 +23,22 @@ type probeResult struct{ rows []probeRow }
 
 // buildRows is the form. Every entry maps onto a scan.Options field, so a setting
 // that exists here must exist in the CLI too.
-func buildRows() []row {
-	severities := make([]string, 0, len(model.Order))
-	for _, severity := range model.Order {
-		severities = append(severities, string(severity))
-	}
-	return []row{
-		{"Profile", newTextField("save as", "ctrl+s stores the current settings under this name", "a name",
-			func(scan.Options) string { return "" }, func(*scan.Options, string) {})},
+// collect reads the form back into options. The form's variables are live, so
+// this is cheap and safe to call on every frame - the side panel depends on it.
+func (m *Model) collect() scan.Options { return m.values.apply(m.options) }
 
-		{"Project", newTextField("path", "the project to scan", "/path/to/project",
-			func(o scan.Options) string { return o.Path },
-			func(o *scan.Options, v string) { o.Path = v })},
-		{"Project", newTextField("git range", "scope the scan to what a range changed", "blank = the whole project",
-			func(o scan.Options) string { return o.Diff },
-			func(o *scan.Options, v string) { o.Diff = v })},
-
-		{"Scanners", newMultiField("scanners", "space toggles the one under the cursor",
-			scan.AllTools, scan.AllTools,
-			func(o scan.Options) []string { return o.Tools },
-			func(o *scan.Options, v []string) { o.Tools = v })},
-
-		{"AI review", newChoiceField("provider", "claude-cli reads the repository; openai sees only what we send",
-			ai.Providers, []string{"claude-cli — reads the repo itself", "openai — api, sees what we send"},
-			func(o scan.Options) string { return o.AIProvider },
-			func(o *scan.Options, v string) { o.AIProvider = v })},
-		{"AI review", newTextField("model", "opus, gpt-5, or a full model id", "blank = the backend's default",
-			func(o scan.Options) string { return o.Model },
-			func(o *scan.Options, v string) { o.Model = v })},
-		{"AI review", newChoiceField("mode", "review needs a backend with git access",
-			[]string{"full", "review", "both"},
-			[]string{"full — audit the whole project", "review — the branch diff", "both"},
-			func(o scan.Options) string { return o.AIMode },
-			func(o *scan.Options, v string) { o.AIMode = v })},
-
-		{"Output", newMultiField("formats", "html is the view, json is the contract",
-			scan.FormatChoices, scan.FormatChoices,
-			func(o scan.Options) []string { return o.Formats },
-			func(o *scan.Options, v []string) { o.Formats = v })},
-		{"Output", newTextField("report directory", "where the reports go", "blank = ./whatsrisky-reports",
-			func(o scan.Options) string { return o.OutDir },
-			func(o *scan.Options, v string) { o.OutDir = v })},
-		{"Output", newToggleField("open when done", "open the report when the scan finishes",
-			func(o scan.Options) bool { return o.OpenReport },
-			func(o *scan.Options, v bool) { o.OpenReport = v })},
-
-		{"Filtering", newChoiceField("minimum severity", "drop findings below this", severities, severities,
-			func(o scan.Options) string { return o.MinSeverity },
-			func(o *scan.Options, v string) { o.MinSeverity = v })},
-		{"Filtering", newChoiceField("fail-on", "exit 2 at or above this, for CI",
-			scan.FailOnChoices, scan.FailOnChoices,
-			func(o scan.Options) string { return o.FailOn },
-			func(o *scan.Options, v string) { o.FailOn = v })},
-		{"Filtering", newTextField("skip these", "directories, paths or globs, comma separated", "blank = nothing extra",
-			func(o scan.Options) string { return commaList(o.Exclude) },
-			func(o *scan.Options, v string) { o.Exclude = splitCommas(v) })},
-		{"Filtering", newToggleField("skip the usual noise", "node_modules, vendor, dist and the rest",
-			func(o scan.Options) bool { return o.UseDefaultExcludes },
-			func(o *scan.Options, v bool) { o.UseDefaultExcludes = v })},
-
-		{"Tuning", newTextField("semgrep --config", "comma separated rule packs", "auto",
-			func(o scan.Options) string { return commaList(o.SemgrepConfigs) },
-			func(o *scan.Options, v string) {
-				if list := splitCommas(v); len(list) > 0 {
-					o.SemgrepConfigs = list
-				}
-			})},
-		{"Tuning", newTextField("trivy --scanners", "which trivy passes to run", "vuln,misconfig",
-			func(o scan.Options) string { return o.TrivyScanners },
-			func(o *scan.Options, v string) {
-				if v != "" {
-					o.TrivyScanners = v
-				}
-			})},
-		{"Tuning", newChoiceField("gitleaks", "which passes to run",
-			[]string{"auto", "dir", "git"},
-			[]string{"auto — tree + history if git", "dir — working tree only", "git — history only"},
-			func(o scan.Options) string { return o.GitleaksMode },
-			func(o *scan.Options, v string) { o.GitleaksMode = v })},
-		{"Tuning", newNumberField("parallel jobs", "1 = sequential",
-			func(o scan.Options) int { return o.Jobs },
-			func(o *scan.Options, v int) {
-				if v > 0 {
-					o.Jobs = v
-				}
-			})},
-		{"Tuning", newToggleField("offline", "no network; trivy skips its DB update",
-			func(o scan.Options) bool { return o.Offline },
-			func(o *scan.Options, v bool) { o.Offline = v })},
-		{"Tuning", newToggleField("compare with last", "off = no new/resolved statuses",
-			func(o scan.Options) bool { return o.Compare },
-			func(o *scan.Options, v bool) { o.Compare = v })},
-	}
-}
-
-// collect reads the form back into options.
-func (m *Model) collect() scan.Options {
-	options := m.options
-	for _, entry := range m.rows {
-		entry.field.apply(&options)
-	}
-	return options
-}
-
-// loadInto pushes options into the form.
+// loadInto rebuilds the form around a different set of options - loading a
+// profile, for instance. Rebuilt rather than refilled, because a huh field binds
+// to its variable when it is constructed.
 func (m *Model) loadInto(options scan.Options) {
-	m.options = options
-	for _, entry := range m.rows {
-		entry.field.load(options)
+	name := ""
+	if m.values != nil {
+		name = m.values.profileName
 	}
+	m.options = options
+	m.values = newFormValues(options)
+	m.values.profileName = name
+	m.form = m.values.form(m.formWidth(), m.bodyHeight())
 }
 
 // probe asks each scanner whether it is there. In a goroutine, because a version
@@ -206,7 +105,7 @@ func (m *Model) warnings(options scan.Options) []string {
 
 // saveProfile stores the form under the name in the profile field.
 func (m *Model) saveProfile() string {
-	name := strings.TrimSpace(m.profileNameField().input.Value())
+	name := strings.TrimSpace(m.values.profileName)
 	if name == "" {
 		return "type a profile name first"
 	}
@@ -215,15 +114,6 @@ func (m *Model) saveProfile() string {
 	}
 	m.profile = name
 	return "saved '" + name + "' — the next launch starts from it"
-}
-
-func (m *Model) profileNameField() *textField {
-	if len(m.rows) > 0 {
-		if field, ok := m.rows[0].field.(*textField); ok {
-			return field
-		}
-	}
-	return newTextField("", "", "", nil, nil)
 }
 
 // profileNames is the saved list, for the side panel.
