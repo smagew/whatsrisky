@@ -11,6 +11,11 @@
 package compare
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/smagew/whatsrisky/internal/model"
 )
 
@@ -175,3 +180,139 @@ func firstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+// --- reading a baseline off disk -------------------------------------
+
+// LoadReport reads a report JSON and returns its findings, scan id and finish
+// time. It refuses anything that is not one of ours: a foreign JSON in the output
+// directory must not be treated as a baseline.
+func LoadReport(path string) ([]model.Finding, string, string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", "", err
+	}
+	var document struct {
+		Generator struct {
+			Name string `json:"name"`
+		} `json:"generator"`
+		ScanID     string `json:"scan_id"`
+		StartedAt  string `json:"started_at"`
+		FinishedAt string `json:"finished_at"`
+		Findings   []struct {
+			Tool     string `json:"tool"`
+			Detector struct {
+				Tool     string  `json:"tool"`
+				Provider *string `json:"provider"`
+				Model    *string `json:"model"`
+				Pass     *string `json:"pass"`
+			} `json:"detector"`
+			Severity         string   `json:"severity"`
+			Status           string   `json:"status"`
+			Title            string   `json:"title"`
+			Description      string   `json:"description"`
+			Category         string   `json:"category"`
+			Source           string   `json:"source"`
+			ScannerCategory  string   `json:"scanner_category"`
+			RuleID           string   `json:"rule_id"`
+			File             string   `json:"file"`
+			Line             *int     `json:"line"`
+			EndLine          *int     `json:"end_line"`
+			CWE              []string `json:"cwe"`
+			OWASP            []string `json:"owasp"`
+			References       []string `json:"references"`
+			Remediation      string   `json:"remediation"`
+			Package          string   `json:"package"`
+			InstalledVersion string   `json:"installed_version"`
+			FixedVersion     string   `json:"fixed_version"`
+			Confidence       string   `json:"confidence"`
+			Snippet          string   `json:"snippet"`
+			CVSS             string   `json:"cvss"`
+			FirstSeen        string   `json:"first_seen"`
+			LastSeen         string   `json:"last_seen"`
+			MovedFrom        string   `json:"moved_from"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, "", "", err
+	}
+	if document.Generator.Name != "" && document.Generator.Name != "whatsrisky" {
+		return nil, "", "", errNotOurs
+	}
+	if document.Findings == nil {
+		return nil, "", "", errNotOurs
+	}
+
+	findings := make([]model.Finding, 0, len(document.Findings))
+	for _, stored := range document.Findings {
+		finding := model.Finding{
+			Tool:     firstNonEmpty(stored.Tool, stored.Detector.Tool),
+			Severity: model.ParseSeverity(stored.Severity, model.Info),
+			Title:    stored.Title, Description: stored.Description,
+			Category: stored.Category, Source: stored.Source,
+			ScannerCategory: stored.ScannerCategory, RuleID: stored.RuleID,
+			File: stored.File, Line: deref(stored.Line), EndLine: deref(stored.EndLine),
+			CWE: stored.CWE, OWASP: stored.OWASP, References: stored.References,
+			Remediation: stored.Remediation, Package: stored.Package,
+			InstalledVersion: stored.InstalledVersion, FixedVersion: stored.FixedVersion,
+			Confidence: stored.Confidence, Snippet: stored.Snippet, CVSS: stored.CVSS,
+			Provider: derefString(stored.Detector.Provider),
+			Model:    derefString(stored.Detector.Model),
+			Pass:     derefString(stored.Detector.Pass),
+			Status:   stored.Status, FirstSeen: stored.FirstSeen,
+			LastSeen: stored.LastSeen, MovedFrom: stored.MovedFrom,
+		}
+		finding.Normalize()
+		findings = append(findings, finding)
+	}
+	finishedAt := firstNonEmpty(document.FinishedAt, document.StartedAt)
+	return findings, firstNonEmpty(document.ScanID, document.StartedAt), finishedAt, nil
+}
+
+// FindBaseline is the most recent report in a directory, or "".
+func FindBaseline(dir string, exclude map[string]bool) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	newest, newestTime := "", time.Time{}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if exclude[path] {
+			continue
+		}
+		if _, _, _, err := LoadReport(path); err != nil {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(newestTime) {
+			newest, newestTime = path, info.ModTime()
+		}
+	}
+	return newest
+}
+
+func deref(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+type compareError string
+
+func (e compareError) Error() string { return string(e) }
+
+const errNotOurs compareError = "not a whatsrisky report"

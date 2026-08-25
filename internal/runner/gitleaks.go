@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/smagew/whatsrisky/internal/exclude"
 	"github.com/smagew/whatsrisky/internal/model"
 	"github.com/smagew/whatsrisky/internal/proc"
-	"github.com/smagew/whatsrisky/internal/scan"
 )
 
 // Gitleaks - hardcoded secrets in the working tree and in git history.
@@ -109,7 +109,7 @@ func isGitRepo(dir string) bool {
 func (g *Gitleaks) excludeConfig() (string, error) {
 	var patterns []string
 	for _, pattern := range g.config.Exclude {
-		if regex := scan.PatternToRegex(pattern); regex != "" {
+		if regex := exclude.PatternToRegex(pattern); regex != "" {
 			patterns = append(patterns, regex)
 		}
 	}

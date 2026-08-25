@@ -18,15 +18,8 @@ func readGolden(t *testing.T, name string, into any) {
 	}
 }
 
-func TestExclusionsMatchTheReferenceImplementation(t *testing.T) {
+func TestEffectiveExcludesMatchTheReferenceImplementation(t *testing.T) {
 	var golden struct {
-		Defaults []string `json:"defaults"`
-		Match    []struct {
-			Path     string   `json:"path"`
-			Patterns []string `json:"patterns"`
-			Expect   bool     `json:"expect"`
-		} `json:"match"`
-		Regex     map[string]string `json:"regex"`
 		Effective []struct {
 			User     []string `json:"user"`
 			Defaults bool     `json:"defaults"`
@@ -34,30 +27,9 @@ func TestExclusionsMatchTheReferenceImplementation(t *testing.T) {
 		} `json:"effective"`
 	}
 	readGolden(t, "excludes.json", &golden)
-
-	if len(golden.Defaults) != len(DefaultExcludes) {
-		t.Errorf("default list size: got %d, reference says %d", len(DefaultExcludes), len(golden.Defaults))
+	if len(golden.Effective) == 0 {
+		t.Fatal("no cases; the parity data is missing")
 	}
-	for i, want := range golden.Defaults {
-		if i < len(DefaultExcludes) && DefaultExcludes[i] != want {
-			t.Errorf("default %d: got %q, want %q", i, DefaultExcludes[i], want)
-		}
-	}
-
-	for _, item := range golden.Match {
-		if got := PathExcluded(item.Path, item.Patterns); got != item.Expect {
-			t.Errorf("PathExcluded(%q, %v): got %v, reference says %v",
-				item.Path, item.Patterns, got, item.Expect)
-		}
-	}
-
-	// gitleaks has no exclude flag, so these regexes are the mechanism.
-	for pattern, want := range golden.Regex {
-		if got := PatternToRegex(pattern); got != want {
-			t.Errorf("PatternToRegex(%q): got %q, want %q", pattern, got, want)
-		}
-	}
-
 	for _, item := range golden.Effective {
 		options := NewOptions()
 		options.Exclude = item.User

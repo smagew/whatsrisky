@@ -3,7 +3,7 @@
 
 PY ?= python3
 
-.PHONY: help check lint test test-all selfscan check-ci clean go-test go-lint parity diff-parity live-ai
+.PHONY: help check lint test test-all selfscan check-ci clean go-test go-lint parity diff-parity live-ai build
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t22
@@ -51,6 +51,10 @@ go-lint:  ## gofmt + go vet
 go-test: go-lint  ## the Go test suite
 	go test ./...
 
+build:  ## build the binary
+	go build -o whatsrisky ./cmd/whatsrisky
+	@./whatsrisky --version
+
 # The Python implementation is the specification: testdata/parity holds what it
 # computes, and the Go tests require the same answers. Regenerate after changing
 # any shared semantics, and read the diff - it is the compatibility break.
@@ -61,7 +65,8 @@ parity:  ## regenerate testdata/parity from the Python implementation
 # "We ported it faithfully" is a claim; this is a check. Both implementations scan
 # the same fixture and every finding must agree, fingerprints included - a Go scan
 # has to be able to correlate against a baseline a Python scan wrote.
-diff-parity:  ## scan one fixture with both implementations and diff the findings
+diff-parity:  ## scan one fixture with both implementations and diff the reports
+	go test ./internal/scan/ -run BothImplementations -v
 	go test ./internal/runner/ -run GoAndPython -v
 
 # A stub cannot cover the real CLI's behaviour. Opt-in: it spends tokens.

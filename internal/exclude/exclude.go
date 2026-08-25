@@ -1,4 +1,8 @@
-package scan
+// Package exclude decides what a scan does not look at.
+//
+// It sits below both scan and runner because both need it: the orchestrator to
+// filter findings as a backstop, the runners to tell their scanners.
+package exclude
 
 import (
 	"path/filepath"
@@ -6,9 +10,9 @@ import (
 	"strings"
 )
 
-// DefaultExcludes is vendored, generated and build output. Scanning it produces
+// Defaults is vendored, generated and build output. Scanning it produces
 // findings nobody can act on, in code nobody in the project wrote.
-var DefaultExcludes = []string{
+var Defaults = []string{
 	".git", ".hg", ".svn",
 	"node_modules", "bower_components", "jspm_packages",
 	"vendor", "third_party", "thirdparty", "Pods", "Carthage",
@@ -33,13 +37,13 @@ func NormalizePattern(pattern string) string {
 
 func hasGlob(pattern string) bool { return strings.ContainsAny(pattern, globChars) }
 
-// PathExcluded reports whether a project-relative path falls under one of the
+// Path reports whether a project-relative path falls under one of the
 // exclusions.
 //
 // A bare name (`node_modules`) matches that path segment anywhere; a pattern with
 // a slash (`src/generated`) matches that subtree; a glob (`*.min.js`) matches the
 // whole path, the basename, or any single segment.
-func PathExcluded(relPath string, patterns []string) bool {
+func Path(relPath string, patterns []string) bool {
 	path := strings.Trim(strings.ReplaceAll(relPath, "\\", "/"), "/")
 	if path == "" {
 		return false

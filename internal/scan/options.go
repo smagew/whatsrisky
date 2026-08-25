@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/smagew/whatsrisky/internal/exclude"
 )
 
 // AllTools is every scanner that exists; DefaultTools is what runs unless asked
@@ -139,7 +141,7 @@ func keepOrderSet(order []string, seen map[string]bool) []string {
 func (o Options) EffectiveExcludes() []string {
 	var candidates []string
 	if o.UseDefaultExcludes {
-		candidates = append(candidates, DefaultExcludes...)
+		candidates = append(candidates, exclude.Defaults...)
 	}
 	candidates = append(candidates, o.Exclude...)
 

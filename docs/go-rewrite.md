@@ -1,6 +1,6 @@
 # Rewriting in Go — specification
 
-Status: **phases 1-3 done**, see the checklists. DOCX is dropped; see the cost below.
+Status: **phases 1-4 done**, see the checklists. DOCX is dropped; see the cost below.
 
 ## Why
 
@@ -92,9 +92,11 @@ The Python implementation is the specification. During the rewrite, both run on
 the same fixture and their reports are compared field by field, ignoring the
 fields that must differ (timestamps, durations, scan ids, absolute paths).
 
-`make diff-parity` does this, and as of phase 2 it reports 28 findings identical
-in both implementations - tool, rule, file, line, severity, category, source and
-fingerprint. A finding that one implementation reports and the
+`make diff-parity` does this. As of phase 4 it compares whole reports through both
+CLIs and reports **28 findings and 17 contract fields identical in both
+implementations** - every field of every finding, not a summary. The excluded
+fields are listed one by one rather than by a wildcard, so a field added later is
+compared until someone decides otherwise. A finding that one implementation reports and the
 other does not is a failure, and so is a differing severity, category, source,
 detector or identity key. This is what turns "we rewrote it faithfully" into
 something a machine checks.
@@ -130,14 +132,16 @@ something a machine checks.
 - [x] The stub-server tests, ported.
 
 ### Phase 4 — output and the CLI
-- [ ] JSON identical to Python's under `make diff-parity`.
-- [ ] The viewer embedded and byte-identical to the current file.
-- [ ] Markdown writer.
-- [ ] Every flag, `doctor`, `profiles`, `--show-excludes`, `--json-stdout`, `--quiet`.
-- [ ] `--format docx` is refused with a reason ("removed in 0.3.0; print the HTML
+- [x] Flags may follow the path. Go's flag package stops at the first non-flag
+      argument, so `whatsrisky <path> --out-dir X` silently ignored the flag.
+- [x] JSON identical to Python's under `make diff-parity`.
+- [x] The viewer embedded and byte-identical to the current file.
+- [x] Markdown writer.
+- [x] Every flag, `doctor`, `profiles`, `--show-excludes`, `--json-stdout`, `--quiet`.
+- [x] `--format docx` is refused with a reason ("removed in 0.3.0; print the HTML
       report, or use the tagged v0.2.0"), never silently ignored. A dropped feature
       that fails quietly is worse than one that fails loudly.
-- [ ] Live report written before the first scanner and after each one.
+- [x] Live report written before the first scanner and after each one.
 
 ### Phase 5 — the terminal UI
 - [ ] Settings screen: profile picker first, every option, the live equivalent

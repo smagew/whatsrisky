@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/smagew/whatsrisky/internal/ai"
+	"github.com/smagew/whatsrisky/internal/exclude"
 	"github.com/smagew/whatsrisky/internal/model"
-	"github.com/smagew/whatsrisky/internal/scan"
 )
 
 // AI is the review pass. Which model runs it is a backend's business; this owns
@@ -66,7 +66,7 @@ func (a *AI) prepareContext(progress func(string)) {
 	if a.backend.Agentic() {
 		return
 	}
-	excluded := func(rel string) bool { return scan.PathExcluded(rel, a.config.Exclude) }
+	excluded := func(rel string) bool { return exclude.Path(rel, a.config.Exclude) }
 	text, included, skipped := ai.BuildContext(
 		a.config.Target, excluded, a.config.ScopePaths, a.config.AIContextBytes)
 	a.contextText = text
