@@ -7,6 +7,16 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- Self-contained HTML report (`report.html`, on by default). One file, no network: the viewer with
+  the report JSON inlined, so the artifact is both the view and the data and the round trip is
+  exact. Groups by severity, category, source, who found it, directory or status; filters compose
+  and live in the URL hash so a filtered view is a link. Coverage gaps sit with the counts rather
+  than in an appendix, resolved findings are one click away and never inflate the open counts, and
+  the palettes are whydiff's so the two windows read as one family.
+- The report can be opened while the scan runs. It exists before the first scanner starts, says
+  `scanning — 1 of 3 done` and names the pending scanners. The TUI enables **View report** (`v`)
+  from the first second; **Open DOCX** (`d`) stays disabled until the DOCX exists and says why.
+
 - Rescan comparison (`schema_version: 2`). A scan correlates itself against the previous report and
   labels every finding `new`, `open`, `resolved`, `reintroduced` or `accepted`. Resolved findings are
   carried into the report for one generation, because showing them is the point. Three identity keys
@@ -36,6 +46,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- A running scan no longer reports "CLEAN". Absence of findings before the scanners have finished is
+  not safety, which is the rule this project applies to everything else.
+- A verdict no longer sounds more confident than its coverage: with a scanner missing it reads
+  `MODERATE - plan remediation · partial coverage (trivy did not run)`.
+- Category precedence: an unambiguous rule-id token now outranks the CWE, because scanner CWE tagging
+  is unreliable — semgrep tags its own `injection.tainted-sql-string` rule with CWE-915, which filed
+  SQL injections under deserialization. Findings in Dockerfiles, IaC and CI config fall back to
+  `misconfiguration` instead of `other`. On the fixture project `other` went from 2% to 0%.
 - A scan no longer discovers its own reports. Output directories are marked, so a second run does not
   re-report the secrets quoted in the first run's report.
 

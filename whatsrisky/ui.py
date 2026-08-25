@@ -69,7 +69,8 @@ class RunScreen(Screen):
 
     BINDINGS = [
         ("escape", "back", "Back to settings"),
-        ("o", "open_report", "Open DOCX"),
+        ("v", "view_report", "View report"),
+        ("d", "open_docx", "Open DOCX"),
         ("q", "quit_app", "Quit"),
     ]
 
@@ -78,6 +79,7 @@ class RunScreen(Screen):
         self.options = options
         self.outcome: ScanOutcome | None = None
         self.progress = ProgressModel()
+        self.live_report: str = ""   # readable while the scan runs
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -88,8 +90,9 @@ class RunScreen(Screen):
             yield RichLog(id="run-log", markup=True, wrap=True, highlight=False)
             yield Static("", id="run-summary")
             with Horizontal(id="run-buttons"):
+                yield Button("View report", id="view", variant="success", disabled=True)
+                yield Button("Open DOCX", id="open", disabled=True)
                 yield Button("Back to settings", id="back", variant="primary")
-                yield Button("Open DOCX", id="open", variant="success", disabled=True)
                 yield Button("Quit", id="quit", variant="error")
         yield Footer()
 
@@ -139,6 +142,11 @@ class RunScreen(Screen):
             log.write(line)
             if payload.get("message") and payload["status"] != "ok":
                 log.write(f"  [dim]{payload['message'][:300]}[/]")
+        elif kind == "live":
+            self.live_report = payload.get("html") or payload.get("json") or ""
+            if self.live_report:
+                self.query_one("#view", Button).disabled = False
+                log.write("[dim]live report ready — press v to open it any time[/]")
         elif kind == "report":
             for path in payload["paths"]:
                 log.write(f"[green]report[/] {path}")
@@ -177,8 +185,13 @@ class RunScreen(Screen):
             log.write(
                 f"[dim]{outcome.report.excluded_count} finding(s) dropped by exclusions[/]"
             )
-        if any(p.suffix == ".docx" for p in outcome.written):
+        docx = next((p for p in outcome.written if p.suffix == ".docx"), None)
+        if docx:
             self.query_one("#open", Button).disabled = False
+        else:
+            # Say why instead of leaving a dead button: the DOCX is written once, at
+            # the end, and only when the format was asked for.
+            log.write("[dim]no DOCX in this run — add docx to the formats to get one[/]")
         self.notify(f"{len(report.findings)} findings · {report.verdict()}", timeout=8)
 
     # --- actions ------------------------------------------------------
@@ -188,20 +201,38 @@ class RunScreen(Screen):
     def action_quit_app(self) -> None:
         self.app.exit(self.outcome.exit_code if self.outcome else 0)
 
-    def action_open_report(self) -> None:
+    def action_view_report(self) -> None:
+        """Open the HTML view - available while the scan is still running."""
+        target = self.live_report
+        if not target and self.outcome:
+            html = next((p for p in self.outcome.written if p.suffix == ".html"), None)
+            target = str(html) if html else ""
+        if not target:
+            self.notify("no viewable report in this run (add html to the formats)", severity="warning")
+        elif not open_file(target):
+            self.notify("could not open the file on this platform", severity="warning")
+
+    def action_open_docx(self) -> None:
         if not self.outcome:
+            self.notify("the DOCX is written when the scan finishes", severity="warning")
             return
         docx = next((p for p in self.outcome.written if p.suffix == ".docx"), None)
-        if docx and not open_file(docx):
+        if not docx:
+            self.notify("no DOCX in this run — add docx to the formats", severity="warning")
+        elif not open_file(docx):
             self.notify("could not open the file on this platform", severity="warning")
 
     @on(Button.Pressed, "#back")
     def _back(self) -> None:
         self.action_back()
 
+    @on(Button.Pressed, "#view")
+    def _view(self) -> None:
+        self.action_view_report()
+
     @on(Button.Pressed, "#open")
     def _open(self) -> None:
-        self.action_open_report()
+        self.action_open_docx()
 
     @on(Button.Pressed, "#quit")
     def _quit(self) -> None:

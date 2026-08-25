@@ -11,10 +11,11 @@ Four scanners, one severity scale, one document:
 | **gitleaks** | Hardcoded secrets in the working tree *and* in git history |
 | **Claude Code** | LLM review of logic, authn/authz and data flow — whole-project audit or the branch diff |
 
-The report is the point. Not a wall of tool output: a document that says what to fix first, why it
-is exploitable, where it is, and — the part scanners usually hide — **what was not scanned at all**.
+The report is the point. Not a wall of tool output: a view that says what to fix first, why it is
+exploitable, where it is, what changed since last time, and — the part scanners usually hide —
+**what was not scanned at all**.
 
-![settings UI](docs/tui-settings.png)
+![HTML report](docs/viewer.png)
 
 ## Install
 
@@ -38,6 +39,7 @@ is missing and how to get it on your platform. The Claude pass additionally need
 
 ```bash
 whatsrisky ~/www/app                      # semgrep + trivy + gitleaks, reports in ./whatsrisky-reports
+whatsrisky ~/www/app --open               # …and open the report when it is done
 whatsrisky ~/www/app --ai                 # add the Claude review pass (costs tokens)
 whatsrisky ~/www/app --diff HEAD~1..HEAD  # only what this range changed
 whatsrisky ~/www/app --exclude legacy --exclude '*.generated.py'
@@ -45,6 +47,27 @@ whatsrisky ~/www/app --min-severity HIGH --open
 whatsrisky ~/www/app --fail-on high       # exit 2 for CI when HIGH+ exists
 whatsrisky                                # no arguments: the settings UI
 ```
+
+### The report view
+
+`report.html` is one self-contained file — no network, no tooling, double-click it. It carries the
+findings and the data behind them, so it is both the view and the machine-readable record.
+
+- **Group** by severity, category, source, who found it, directory, or status.
+- **Filter** by severity, category, source, detector and free text; filters compose and live in the
+  URL hash, so a filtered view is a link you can paste to someone.
+- **Coverage gaps sit with the counts**, not in an appendix — a scanner that did not run means that
+  area is unscanned, and the verdict itself says `partial coverage (trivy did not run)`.
+- **Resolved findings** are one click away and never inflate the open counts.
+- Three themes, the same tokens as [whydiff](https://github.com/smagew/whydiff), so the two windows
+  read as one family.
+
+It is written **before the first scanner starts** and rewritten after each one, so you can open it
+while the scan is still running: it says `scanning — 1 of 3 done`, names the pending scanners, and
+never reports "clean" before it knows. The terminal UI enables **View report** (`v`) from the first
+second; **Open DOCX** (`d`) stays disabled until the DOCX is actually written and says why.
+
+![run screen](docs/tui-run.png)
 
 ### Settings UI
 
@@ -55,8 +78,6 @@ before you run (bad path, offline + `auto`, "the AI pass spends tokens"), and di
 settings cannot work.
 
 `r` runs the scan on a live-progress screen; `ctrl+s` saves the current form as a named **profile**.
-
-![run screen](docs/tui-run.png)
 
 Profiles work from the CLI too, so the UI and CI can share one configuration:
 
@@ -135,13 +156,18 @@ whatsrisky ~/www/app --no-compare             # don't
 
 ### Grouping axes
 
-Every finding carries a normalized `category` from a closed vocabulary
-(`injection.sql`, `secret`, `path-traversal`, `crypto`, `dependency`,
-`misconfiguration`, …), derived from its CWE where it has one, and a `source`
+Every finding carries the axes the view groups by, so a machine reading the JSON sees the same
+structure a person sees in the browser.
+
+A normalized `category` from a closed vocabulary (`injection.sql`, `secret`, `path-traversal`,
+`crypto`, `dependency`, `misconfiguration`, …) and a `source`
 (`source-code`, `dependency-manifest`, `git-history`, `iac`, `container`,
-`ci-config`). `detector` records who found it — tool, and for the AI pass the
-provider and model. So the same findings can be read by severity, by kind of
-problem, by where they live, or by which scanner produced them.
+`ci-config`). `detector` records who found it — tool, and for the AI pass the provider and model.
+
+The category comes from the strongest signal available, and the order matters: the scanner's own
+class, then unambiguous tokens in the rule id, then the artifact, then CWE, then fuzzy keywords.
+Rule ids outrank CWE deliberately — semgrep tags its own `injection.tainted-sql-string` rule with
+CWE-915, which would file a SQL injection under deserialization.
 
 ### Flags that matter
 
@@ -169,7 +195,8 @@ problem, by where they live, or by which scanner produced them.
    CWE/OWASP/CVSS, what is wrong, code evidence, how to fix, references, and a stable id.
 5. **Appendix** — AI reviewer summary and scanner diagnostics.
 
-`--format docx,md,json` picks the outputs; all three by default.
+`--format html,docx,md,json` picks the outputs; all four by default. The HTML is the view, the DOCX
+is what you hand to someone, the JSON is what other tools read.
 
 ## Embedding
 
@@ -246,7 +273,8 @@ secret scanners or GitHub push protection.
 
 - `whatsrisky/core.py` — `ScanOptions`, `run_scan()`, tool probing. No terminal, no UI.
 - `whatsrisky/runners/` — one module per scanner, each returning normalized `Finding` objects.
-- `whatsrisky/report/` — DOCX and Markdown writers.
+- `whatsrisky/report/` — HTML, DOCX and Markdown writers. `templates/viewer.html` is the whole
+  viewer in one file (CSS + JS), with the report JSON inlined at write time.
 - `whatsrisky/ui.py` — Textual settings + progress UI. `whatsrisky/settings.py` — persisted profiles.
 - `whatsrisky/progress.py` — one progress model, rendered by both the CLI and the UI.
 - `whatsrisky/categories.py` — CWE → normalized category. `whatsrisky/compare.py` — rescan

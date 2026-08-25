@@ -18,7 +18,7 @@ from typing import Callable
 
 from .compare import correlate, find_baseline, load_report
 from .models import SEVERITY_ORDER, ScanReport, Severity, ToolResult
-from .report import write_docx, write_markdown
+from .report import write_docx, write_html, write_markdown
 from .runners import ALL_RUNNERS, ScanConfig
 from .util import changed_files, git_info, path_excluded, slugify, which
 
@@ -44,7 +44,7 @@ DEFAULT_EXCLUDES = [
     "whatsrisky-reports",
 ]
 MODEL_CHOICES = ["opus", "sonnet", "haiku"]
-FORMAT_CHOICES = ["docx", "md", "json"]
+FORMAT_CHOICES = ["html", "docx", "md", "json"]
 FAIL_ON_CHOICES = ["none", "critical", "high", "medium", "low", "info"]
 
 TOOL_COVERAGE = {
@@ -204,18 +204,23 @@ class _LiveWriter:
 
     def __init__(self, report: ScanReport, out_dir: Path, base: str, formats: list[str]):
         self.report = report
-        self.path = out_dir / f"{base}.json" if "json" in formats else None
+        self.json_path = out_dir / f"{base}.json" if "json" in formats else None
+        self.html_path = out_dir / f"{base}.html" if "html" in formats else None
 
     def write(self) -> None:
-        if self.path is None:
-            return
-        try:
-            payload = json.dumps(self.report.to_dict(), indent=2, ensure_ascii=False)
-            temporary = self.path.with_suffix(".json.part")
-            temporary.write_text(payload, encoding="utf-8")
-            temporary.replace(self.path)  # atomic: a reader never sees half a report
-        except OSError:
-            pass
+        if self.json_path is not None:
+            try:
+                payload = json.dumps(self.report.to_dict(), indent=2, ensure_ascii=False)
+                temporary = self.json_path.with_suffix(".json.part")
+                temporary.write_text(payload, encoding="utf-8")
+                temporary.replace(self.json_path)  # atomic: never half a report
+            except OSError:
+                pass
+        if self.html_path is not None:
+            try:
+                write_html(self.report, self.html_path)
+            except OSError:
+                pass
 
 
 @dataclass
@@ -436,6 +441,7 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
     config = build_scan_config(options, target, work_dir, scope_paths, excludes)
     commit, branch = git_info(target)
     report = ScanReport(
+        excludes=excludes,
         project_path=str(target),
         project_name=target.name,
         scan_id=base,
@@ -478,6 +484,14 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
         report.tools.append(ToolResult(name=name, status="pending"))
     live = _LiveWriter(report, out_dir, base, options.formats)
     live.write()
+    # A front end can open the report from here on: it exists and it says it is running.
+    on_event(
+        "live",
+        {
+            "html": str(live.html_path) if live.html_path else "",
+            "json": str(live.json_path) if live.json_path else "",
+        },
+    )
 
     def relay(kind: str, payload: dict) -> None:
         on_event(kind, payload)
@@ -503,19 +517,20 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
                 continue
             seen.add(finding.fingerprint)
             report.findings.append(finding)
-    report.excludes = excludes
 
     if baseline_data is not None:
         correlate(report, baseline_data, baseline_path)
 
     written: list[Path] = []
+    live.write()
+    if "html" in options.formats:
+        written.append(out_dir / f"{base}.html")
     if "docx" in options.formats:
         path = Path(options.out).expanduser().resolve() if options.out else out_dir / f"{base}.docx"
         written.append(write_docx(report, path, options.max_per_severity))
     if "md" in options.formats:
         written.append(write_markdown(report, out_dir / f"{base}.md"))
     if "json" in options.formats:
-        live.write()
         written.append(out_dir / f"{base}.json")
     on_event("report", {"paths": [str(p) for p in written]})
 

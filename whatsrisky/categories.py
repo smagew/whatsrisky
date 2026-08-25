@@ -4,12 +4,18 @@
 `Dependency/pip`, `AI/Injection`. Useless for grouping. This module derives a
 closed vocabulary from the strongest signal available, in order:
 
-1. CWE, when the finding carries one. This is the reliable signal and it is
-   already in the data.
-2. The scanner's own class - a Trivy vulnerability is a dependency finding
-   whatever its CWE says, a gitleaks hit is a secret.
-3. Keywords in the rule id, as a last resort.
-4. `other` - and `other` staying large is a bug in this mapping, not a category.
+1. The scanner's own class - a Trivy vulnerability is a dependency finding
+   whatever its CWE says, and a gitleaks hit is a secret.
+2. Unambiguous tokens in the rule id. Scanner authors name rules after the
+   vulnerability class (`...injection.tainted-sql-string`), and that name is a
+   *stronger* signal than the CWE: semgrep tags that very rule with CWE-915
+   (object-attribute modification), which would file a SQL injection under
+   deserialization. Only tokens that can mean one thing belong here.
+3. The artifact: a finding in a Dockerfile, a Terraform file or a CI workflow is
+   a misconfiguration unless step 2 already said otherwise.
+4. CWE.
+5. Fuzzy keywords - `auth`, `hash`, `header` - which are too weak to outrank a CWE.
+6. `other` - and `other` staying large is a bug in this mapping, not a category.
 """
 
 from __future__ import annotations
@@ -85,6 +91,8 @@ _CWE_GROUPS: dict[str, tuple[int, ...]] = {
     AUTHENTICATION: (287, 288, 290, 294, 297, 303, 304, 307, 384, 521, 613, 620, 640),
     CRYPTO: (295, 296, 310, 311, 326, 327, 328, 329, 330, 331, 335, 338, 347, 759, 760, 780, 916, 1240),
     DEPENDENCY: (937, 1035, 1104),
+    # 269 is privilege management: as a Dockerfile finding it is a
+    # misconfiguration, which the artifact rule above already decides.
     MISCONFIGURATION: (16, 276, 614, 693, 732, 942, 1004, 1021, 1275),
     SUPPLY_CHAIN: (494, 506, 829, 1357),
     DOS: (400, 405, 409, 674, 770, 834, 1333),
@@ -100,69 +108,83 @@ for _category, _numbers in _CWE_GROUPS.items():
     for _number in (_numbers if isinstance(_numbers, tuple) else (_numbers,)):
         CWE_TO_CATEGORY[_number] = _category
 
-# --- rule-id keywords, the last resort --------------------------------
-_KEYWORDS: tuple[tuple[str, str], ...] = (
+# --- rule-id tokens that can only mean one thing ----------------------
+# These outrank the CWE. Longest first, so `sql-injection` is not shadowed by a
+# shorter token that happens to be a substring of it.
+_STRONG: tuple[tuple[str, str], ...] = (
     ("sql-injection", INJECTION_SQL),
-    ("sqli", INJECTION_SQL),
     ("tainted-sql", INJECTION_SQL),
+    ("sqli", INJECTION_SQL),
     ("command-injection", INJECTION_COMMAND),
     ("shell-injection", INJECTION_COMMAND),
     ("subprocess", INJECTION_COMMAND),
     ("os-system", INJECTION_COMMAND),
-    ("eval", INJECTION_CODE),
-    ("exec-use", INJECTION_CODE),
+    ("shell-true", INJECTION_COMMAND),
     ("code-injection", INJECTION_CODE),
     ("template-injection", INJECTION_CODE),
-    ("xss", XSS),
+    ("eval", INJECTION_CODE),
+    ("exec-use", INJECTION_CODE),
     ("cross-site-scripting", XSS),
+    ("xss", XSS),
     ("autoescape", XSS),
+    ("directory-traversal", PATH_TRAVERSAL),
     ("path-traversal", PATH_TRAVERSAL),
     ("zip-slip", PATH_TRAVERSAL),
-    ("directory-traversal", PATH_TRAVERSAL),
+    ("deserial", DESERIALIZATION),
     ("pickle", DESERIALIZATION),
     ("marshal", DESERIALIZATION),
     ("yaml-load", DESERIALIZATION),
-    ("deserial", DESERIALIZATION),
     ("ssrf", SSRF),
-    ("xxe", XXE),
     ("xml-external", XXE),
-    ("csrf", ACCESS_CONTROL),
-    ("authz", ACCESS_CONTROL),
-    ("authorization", ACCESS_CONTROL),
-    ("permission", MISCONFIGURATION),
-    ("chmod", MISCONFIGURATION),
-    ("auth", AUTHENTICATION),
-    ("jwt", AUTHENTICATION),
-    ("password", AUTHENTICATION),
-    ("session", AUTHENTICATION),
-    ("crypto", CRYPTO),
-    ("cipher", CRYPTO),
-    ("hash", CRYPTO),
-    ("md5", CRYPTO),
-    ("sha1", CRYPTO),
-    ("tls", CRYPTO),
-    ("ssl", CRYPTO),
-    ("certificate", CRYPTO),
-    ("random", CRYPTO),
-    ("secret", SECRET),
-    ("token", SECRET),
+    ("xxe", XXE),
+    ("hardcoded", SECRET),
+    ("private-key", SECRET),
     ("api-key", SECRET),
     ("credential", SECRET),
-    ("private-key", SECRET),
-    ("debug", MISCONFIGURATION),
-    ("cors", MISCONFIGURATION),
-    ("header", MISCONFIGURATION),
+    ("secret", SECRET),
+    ("-token", SECRET),
+    ("token-", SECRET),
     ("mutable-action", SUPPLY_CHAIN),
     ("unpinned", SUPPLY_CHAIN),
     ("curl-pipe", SUPPLY_CHAIN),
-    ("dos", DOS),
-    ("redos", DOS),
-    ("logging", LOGGING),
+    ("pipe-shell", SUPPLY_CHAIN),
+    ("csrf", ACCESS_CONTROL),
+    ("authz", ACCESS_CONTROL),
+    ("authorization", ACCESS_CONTROL),
     ("log-injection", LOGGING),
+    ("redos", DOS),
+)
+
+# --- fuzzy keywords, too weak to outrank a CWE ------------------------
+_WEAK: tuple[tuple[str, str], ...] = (
+    ("password", AUTHENTICATION),
+    ("session", AUTHENTICATION),
+    ("jwt", AUTHENTICATION),
+    ("auth", AUTHENTICATION),
+    ("certificate", CRYPTO),
+    ("cipher", CRYPTO),
+    ("crypto", CRYPTO),
+    ("md5", CRYPTO),
+    ("sha1", CRYPTO),
+    ("random", CRYPTO),
+    ("tls", CRYPTO),
+    ("ssl", CRYPTO),
+    ("hash", CRYPTO),
+    ("permission", MISCONFIGURATION),
+    ("chmod", MISCONFIGURATION),
+    ("debug", MISCONFIGURATION),
+    ("cors", MISCONFIGURATION),
+    ("header", MISCONFIGURATION),
     ("traceback", INFO_DISCLOSURE),
     ("stacktrace", INFO_DISCLOSURE),
     ("verbose-error", INFO_DISCLOSURE),
+    ("logging", LOGGING),
+    ("dos", DOS),
 )
+
+# A finding in one of these artifacts is a misconfiguration when nothing more
+# specific applies - that is what those files are.
+_CONFIG_SOURCES = frozenset({"container", "iac", "ci-config"})
 
 # --- scanner class -> category ----------------------------------------
 _NATIVE: tuple[tuple[str, str], ...] = (
@@ -184,7 +206,17 @@ def parse_cwe(values) -> list[int]:
     return numbers
 
 
-def classify(cwe=None, native_category: str = "", rule_id: str = "", title: str = "") -> str:
+def _normalize(*parts: str) -> str:
+    return "-" + "-".join(str(p or "").lower().replace("_", "-").replace(" ", "-").replace(".", "-") for p in parts) + "-"
+
+
+def classify(
+    cwe=None,
+    native_category: str = "",
+    rule_id: str = "",
+    title: str = "",
+    source: str = "",
+) -> str:
     """Best category for a finding, from the strongest signal available."""
     native = (native_category or "").lower()
 
@@ -194,17 +226,27 @@ def classify(cwe=None, native_category: str = "", rule_id: str = "", title: str 
         if native.startswith(needle):
             return category
 
+    rule_text = _normalize(rule_id)
+    for needle, category in _STRONG:
+        if needle in rule_text:
+            return category
+
+    title_text = _normalize(title)
+    for needle, category in _STRONG:
+        if needle in title_text:
+            return category
+
+    if source in _CONFIG_SOURCES:
+        return MISCONFIGURATION
+
     for number in parse_cwe(cwe):
         if number in CWE_TO_CATEGORY:
             return CWE_TO_CATEGORY[number]
 
-    haystack = f"{rule_id} {title}".lower().replace("_", "-").replace(" ", "-")
-    for needle, category in _KEYWORDS:
-        if needle in haystack:
+    for needle, category in _WEAK:
+        if needle in rule_text or needle in title_text:
             return category
 
-    if native.startswith("ai/") or native.startswith("sast"):
-        return OTHER
     return OTHER
 
 

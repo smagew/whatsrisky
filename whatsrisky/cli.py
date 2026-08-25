@@ -188,6 +188,11 @@ class ProgressView:
             return
         if kind == "report":
             return
+        if kind == "live":
+            target = payload.get("html") or payload.get("json")
+            if target:
+                self.console.print(f"[dim]live report {target}[/]")
+            return
         self.model.handle(kind, payload)
         if not self.live:
             self._print_plain(kind, payload.get("tool", ""))
@@ -299,8 +304,11 @@ def cmd_scan(args: argparse.Namespace) -> int:
             console.print(f"[dim]raw scanner output kept in {outcome.work_dir}[/]")
 
     if options.open_report:
-        docx = next((p for p in outcome.written if p.suffix == ".docx"), None)
-        if docx and not open_file(docx):
+        # The HTML is the view; the DOCX is the deliverable. Open the view.
+        preferred = next(
+            (p for suffix in (".html", ".docx") for p in outcome.written if p.suffix == suffix), None
+        )
+        if preferred and not open_file(preferred):
             console.print("[yellow]could not open the report on this platform[/]")
     return outcome.exit_code
 
@@ -409,7 +417,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scan.add_argument("--work-dir", help="where to keep raw scanner output")
     scan.add_argument("--keep-work", action="store_true", help="do not delete raw scanner output")
-    scan.add_argument("--open", action="store_true", help="open the DOCX when done")
+    scan.add_argument("--open", action="store_true", help="open the report when done (HTML if written)")
     scan.add_argument("--quiet", action="store_true", help="print only the written report paths")
     scan.add_argument(
         "--json-stdout",

@@ -1,6 +1,6 @@
 # Report format and viewer — specification
 
-Status: **proposed**, awaiting agreement. Nothing here is built yet.
+Status: **sections 1-3 built** (see the checklists below). Sections 4-5 are still proposed.
 
 ## Why a format at all
 
@@ -153,41 +153,41 @@ in a chip that reveals them.
 ## Done =
 
 ### 1. Format and comparison (`schema_version: 2`)
-- [ ] `report.json` carries `detector`, `category`, `category_label`, `source`,
+- [x] `report.json` carries `detector`, `category`, `category_label`, `source`,
       `status`, `content_key`, `match_key`, `first_seen`, `last_seen`.
-- [ ] CWE → category mapping is table-driven and unit-tested per vocabulary entry;
+- [x] CWE → category mapping is table-driven and unit-tested per vocabulary entry;
       `other` is under 10% of findings on the fixture project.
-- [ ] A rescan of an unchanged project reports every finding `open`, zero `new`,
+- [x] A rescan of an unchanged project reports every finding `open`, zero `new`,
       zero `resolved`.
-- [ ] Fixing one finding and rescanning reports exactly that one `resolved`, still
+- [x] Fixing one finding and rescanning reports exactly that one `resolved`, still
       present in the output, and the rest `open`.
-- [ ] Moving vulnerable code to another line — and to another file — keeps it
+- [x] Moving vulnerable code to another line — and to another file — keeps it
       `open`, not `resolved` + `new`, and records `moved_from`.
-- [ ] Reintroducing a fixed finding reports `reintroduced`.
-- [ ] `--baseline`, `--no-compare` and auto-detection of the latest report all work,
+- [x] Reintroducing a fixed finding reports `reintroduced`.
+- [x] `--baseline`, `--no-compare` and auto-detection of the latest report all work,
       and a missing baseline is not an error.
-- [ ] `schema/report.schema.json` validates every field, and the self-scan output
+- [x] `schema/report.schema.json` validates every field, and the self-scan output
       validates against it in CI.
 
 ### 2. HTML viewer
-- [ ] One self-contained file, no network, opens by double-click.
-- [ ] The embedded JSON round-trips: extracting it yields the same document as
+- [x] One self-contained file, no network, opens by double-click.
+- [x] The embedded JSON round-trips: extracting it yields the same document as
       `report.json`.
-- [ ] Grouping by severity, category, detector and source, each with counts.
-- [ ] Filters compose (severity + category + status + text) and are reflected in the
+- [x] Grouping by severity, category, detector and source, each with counts.
+- [x] Filters compose (severity + category + status + text) and are reflected in the
       URL hash, so a filtered view can be shared.
-- [ ] Resolved findings are visible on demand and never inflate the open counts.
-- [ ] A `running` report renders as in-progress, naming which scanners are pending.
-- [ ] Coverage gaps are as prominent as findings — a missing scanner must not read
+- [x] Resolved findings are visible on demand and never inflate the open counts.
+- [x] A `running` report renders as in-progress, naming which scanners are pending.
+- [x] Coverage gaps are as prominent as findings — a missing scanner must not read
       as a clean result.
-- [ ] Design system: the whydiff rules, enforced by a test (tokens on `:root`,
+- [x] Design system: the whydiff rules, enforced by a test (tokens on `:root`,
       radius ≤ 5px, type ≥ 13px, no uppercase, shadows only on overlays).
 
 ### 3. Live view in the existing UIs
-- [ ] `report.html` exists within a second of the scan starting.
-- [ ] The TUI's "View report" opens it at any moment, including mid-scan.
-- [ ] Rewritten after each scanner; reloading the browser shows the newer state.
-- [ ] "Open DOCX" stays disabled until the DOCX is actually written, and says why.
+- [x] `report.html` exists within a second of the scan starting.
+- [x] The TUI's "View report" opens it at any moment, including mid-scan.
+- [x] Rewritten after each scanner; reloading the browser shows the newer state.
+- [x] "Open DOCX" stays disabled until the DOCX is actually written, and says why.
 
 ### 4. Provider abstraction
 - [ ] `--ai-provider claude-cli|anthropic|openai|google`, `--model` free-form.

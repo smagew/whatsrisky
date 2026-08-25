@@ -206,15 +206,16 @@ class Finding:
             setattr(self, field_name, clean_text(getattr(self, field_name)))
         for field_name in ("cwe", "owasp", "references"):
             setattr(self, field_name, [clean_text(v) for v in getattr(self, field_name)])
+        if not self.source:
+            self.source = infer_source(self.tool, self.pass_name, self.file)
         if not self.norm_category:
             self.norm_category = categories.classify(
                 cwe=self.cwe,
                 native_category=self.category,
                 rule_id=self.rule_id,
                 title=self.title,
+                source=self.source,
             )
-        if not self.source:
-            self.source = infer_source(self.tool, self.pass_name, self.file)
 
     @property
     def location(self) -> str:
@@ -406,16 +407,31 @@ class ScanReport:
         return min(100, round(100 * (1 - math.exp(-total / 120.0))))
 
     def verdict(self) -> str:
+        # A scan still running has no verdict. Reporting "clean" here would be the
+        # exact failure this project refuses elsewhere: absence read as safety.
+        if self.status == "running":
+            done = sum(1 for t in self.tools if t.status not in ("pending", "running"))
+            return f"SCAN IN PROGRESS - {done} of {len(self.tools)} scanners done, no verdict yet"
         c = self.counts()
         if c[Severity.CRITICAL]:
-            return "CRITICAL - immediate remediation required"
-        if c[Severity.HIGH]:
-            return "HIGH RISK - fix before release"
-        if c[Severity.MEDIUM]:
-            return "MODERATE - plan remediation"
-        if c[Severity.LOW] or c[Severity.INFO]:
-            return "LOW - hygiene issues only"
-        return "CLEAN - no findings from the configured scanners"
+            headline = "CRITICAL - immediate remediation required"
+        elif c[Severity.HIGH]:
+            headline = "HIGH RISK - fix before release"
+        elif c[Severity.MEDIUM]:
+            headline = "MODERATE - plan remediation"
+        elif c[Severity.LOW] or c[Severity.INFO]:
+            headline = "LOW - hygiene issues only"
+        elif self.status == "partial":
+            return "INCONCLUSIVE - a scanner failed, so parts were not scanned"
+        else:
+            return "CLEAN - no findings from the configured scanners"
+        # The headline must not sound more confident than the coverage allows: a
+        # reader who reads nothing else has to see that scanners were missing.
+        gaps = [t for t in self.tools if t.status in ("missing", "error", "skipped")]
+        if gaps:
+            names = ", ".join(t.name for t in gaps)
+            return f"{headline} · partial coverage ({names} did not run)"
+        return headline
 
     def sorted_findings(self) -> list[Finding]:
         """Priority order, with what no longer counts pushed to the end."""
