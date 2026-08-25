@@ -5,6 +5,23 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A saved profile is what the next launch starts from. Saving one records it as active, the picker
+  opens on it and the window title names it; previously the UI always reopened on the last run and a
+  profile had to be found and re-chosen by hand.
+- The profile picker is the first block in the form instead of the last block of the side panel, the
+  blank entry means "not in a profile" rather than doing nothing, and re-picking the active profile
+  reloads it.
+- A profile no longer carries the project path, the git range, the baseline or an explicit output
+  file. Those are per-invocation; storing them meant a profile reused elsewhere dragged the old
+  project with it. Existing profiles are cleaned up by a config migration.
+- "View report" opens the page or nothing. It used to fall back to the JSON file when a run wrote no
+  HTML, which looked like a broken button. Profiles saved before the HTML view existed had
+  `formats: ["json"]` and hit exactly that; the migration adds `html` back to them.
+- A CLI run no longer overwrites what the UI remembers, so a scripted `--out-dir /tmp/x` cannot end
+  up as the interactive default.
+
 ## [0.2.0] - 2026-08-25
 
 ### Added

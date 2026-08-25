@@ -156,7 +156,9 @@ def test_profiles_roundtrip(tmp_path, monkeypatch):
     settings.save_profile("ci", opts)
     settings.save_last(opts)
     assert settings.profile_names() == ["ci"]
-    assert settings.load_profile("ci") == opts
+    # A profile keeps the settings and drops the target - see test_profiles.py.
+    stored = settings.load_profile("ci")
+    assert stored.model == "sonnet" and stored.fail_on == "high" and stored.path == ""
     assert settings.load_last() == opts
     assert settings.delete_profile("ci") and not settings.delete_profile("ci")
 

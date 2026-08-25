@@ -144,10 +144,14 @@ class RunScreen(Screen):
             if payload.get("message") and payload["status"] != "ok":
                 log.write(f"  [dim]{payload['message'][:300]}[/]")
         elif kind == "live":
-            self.live_report = payload.get("html") or payload.get("json") or ""
+            # Only the page counts: opening the JSON instead would look like the
+            # button is broken, which is exactly how it was reported.
+            self.live_report = payload.get("html") or ""
             if self.live_report:
                 self.query_one("#view", Button).disabled = False
                 log.write("[dim]live report ready — press v to open it any time[/]")
+            else:
+                log.write("[dim]no html in this run — the report view is unavailable[/]")
         elif kind == "report":
             for path in payload["paths"]:
                 log.write(f"[green]report[/] {path}")
@@ -209,7 +213,10 @@ class RunScreen(Screen):
             html = next((p for p in self.outcome.written if p.suffix == ".html"), None)
             target = str(html) if html else ""
         if not target:
-            self.notify("no viewable report in this run (add html to the formats)", severity="warning")
+            self.notify(
+                "this run writes no html, so there is no page to view — tick html in the formats",
+                severity="warning",
+            )
         elif not open_file(target):
             self.notify("could not open the file on this platform", severity="warning")
 
@@ -250,9 +257,13 @@ class SettingsScreen(Screen):
         ("q", "quit_app", "Quit"),
     ]
 
-    def __init__(self, options: ScanOptions):
+    def __init__(self, options: ScanOptions, profile: str = ""):
         super().__init__()
         self.options = options
+        self.active_profile = profile or settings.active_profile()
+        # Set while the picker is updated programmatically, so refreshing the list
+        # does not read as the user choosing something.
+        self._loading_profile = False
 
     # --- layout -------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -260,6 +271,15 @@ class SettingsScreen(Screen):
         yield Header(show_clock=True)
         with Horizontal(id="main"):
             with VerticalScroll(id="form"):
+                yield Label("[b]Profile[/]", classes="section")
+                yield Label("start from a saved set of settings", classes="field")
+                with Horizontal(classes="pair"):
+                    yield Select([("(none)", "")], allow_blank=True, id="profile-load")
+                    yield Input(placeholder="name to save as", id="profile-name")
+                with Horizontal(classes="pair"):
+                    yield Button("Save profile", id="save-profile", variant="primary")
+                    yield Button("Delete", id="delete-profile")
+
                 yield Label("[b]Project[/]", classes="section")
                 yield Input(value=opts.path, placeholder="/path/to/project", id="path")
                 yield Label("scope to a git range (blank = whole project)", classes="field")
@@ -379,13 +399,6 @@ class SettingsScreen(Screen):
                 yield Rule()
                 yield Static("", id="problems-panel")
                 yield Rule()
-                yield Label("[b]Profiles[/]")
-                yield Select([("(none saved)", "")], allow_blank=True, id="profile-load")
-                yield Input(placeholder="profile name to save", id="profile-name")
-                with Horizontal(classes="pair"):
-                    yield Button("Save", id="save-profile", variant="primary")
-                    yield Button("Delete", id="delete-profile")
-                yield Rule()
                 yield Button("▶  Run scan", id="run", variant="success")
                 yield Static(
                     f"[dim]whatsrisky {__version__} · report schema {SCHEMA_VERSION}[/]",
@@ -395,6 +408,13 @@ class SettingsScreen(Screen):
 
     def on_mount(self) -> None:
         self.query_one("#tools-panel", Static).update("[dim]probing scanners…[/]")
+        # The named profile is authoritative: whatever options this screen was
+        # handed, the profile you are in is what its settings must show.
+        if self.active_profile:
+            stored = settings.load_profile(self.active_profile)
+            if stored is not None:
+                stored.path = self.options.path or stored.path
+                self.apply(stored)
         self._refresh_profiles()
         self._refresh_preview()
         self.probe()
@@ -607,18 +627,47 @@ class SettingsScreen(Screen):
     def _refresh_profiles(self) -> None:
         names = settings.profile_names()
         select = self.query_one("#profile-load", Select)
-        select.set_options([(n, n) for n in names] or [("(none saved)", "")])
+        self._loading_profile = True
+        try:
+            select.set_options([(n, n) for n in names] or [("(no profiles saved)", "")])
+            active = self.active_profile
+            if active in names:
+                select.value = active
+                self.query_one("#profile-name", Input).value = active
+        finally:
+            self._loading_profile = False
+        self._show_active()
+
+    def _show_active(self) -> None:
+        label = self.active_profile or "no profile"
+        self.app.sub_title = f"{label} · {__version__}"
 
     @on(Select.Changed, "#profile-load")
     def _load_profile(self, event: Select.Changed) -> None:
-        name = str(event.value or "")
+        if self._loading_profile:
+            return
+        name = event.value if isinstance(event.value, str) else ""
         if not name:
+            # The blank entry means "not in a profile": detach, keep the settings.
+            self.active_profile = ""
+            settings.set_active_profile("")
+            self.query_one("#profile-name", Input).value = ""
+            self._show_active()
             return
         opts = settings.load_profile(name)
-        if opts:
-            self.apply(opts)
-            self.query_one("#profile-name", Input).value = name
-            self.notify(f"loaded profile '{name}'")
+        if not opts:
+            return
+        # A profile carries settings, not a target: keep the project on screen.
+        current = self.query_one("#path", Input).value.strip()
+        opts.path = opts.path or current or self.options.path
+        if current:
+            opts.path = current
+        self.active_profile = name
+        settings.set_active_profile(name)
+        self.apply(opts)
+        self.query_one("#profile-name", Input).value = name
+        self._show_active()
+        self.notify(f"loaded profile '{name}'")
 
     @on(Button.Pressed, "#save-profile")
     def _save_profile(self) -> None:
@@ -628,6 +677,8 @@ class SettingsScreen(Screen):
     def _delete_profile(self) -> None:
         name = self.query_one("#profile-name", Input).value.strip()
         if name and settings.delete_profile(name):
+            if self.active_profile == name:
+                self.active_profile = ""
             self._refresh_profiles()
             self.notify(f"deleted profile '{name}'")
         else:
@@ -639,8 +690,9 @@ class SettingsScreen(Screen):
             self.notify("type a profile name first", severity="warning")
             return
         settings.save_profile(name, self.collect())
+        self.active_profile = name
         self._refresh_profiles()
-        self.notify(f"saved profile '{name}'")
+        self.notify(f"saved '{name}' — the next launch starts from it")
 
     # --- run ----------------------------------------------------------
     @on(Button.Pressed, "#run")
@@ -692,21 +744,38 @@ class WhatsriskyApp(App):
     #run-buttons Button { margin-right: 2; }
     """
 
-    def __init__(self, options: ScanOptions):
+    def __init__(self, options: ScanOptions, profile: str = ""):
         super().__init__()
         self.options = options
+        self.profile = profile
 
     def on_mount(self) -> None:
-        self.push_screen(SettingsScreen(self.options))
+        self.push_screen(SettingsScreen(self.options, self.profile))
 
 
-def launch(path: str = "") -> int:
-    """Open the settings UI. `path` (or the last used options) seeds the form."""
-    options = settings.load_last() or ScanOptions()
+def launch(path: str = "", profile: str = "") -> int:
+    """Open the settings UI.
+
+    The active profile decides what the form starts from - a profile you saved is
+    what you meant to come back to - with the last run as the fallback.
+    """
+    if profile:
+        options = settings.load_profile(profile)
+        if options is None:
+            raise SystemExit(
+                f"no such profile: {profile} (have: {', '.join(settings.profile_names()) or 'none'})"
+            )
+        settings.set_active_profile(profile)
+        last = settings.load_last()
+        if last is not None:
+            options.path = last.path
+    else:
+        options = settings.startup_options()
+        profile = settings.active_profile()
     if path:
         options.path = str(Path(path).expanduser())
     if not options.path:
         options.path = str(Path.cwd())
-    app = WhatsriskyApp(options)
+    app = WhatsriskyApp(options, profile)
     result = app.run()
     return int(result or 0)

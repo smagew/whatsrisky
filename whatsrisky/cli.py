@@ -71,7 +71,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
     except ImportError as exc:  # textual missing
         console.print(f"[red]The settings UI needs textual:[/] uv pip install textual  ({exc})")
         return 1
-    return launch(args.path or "")
+    return launch(args.path or "", args.profile or "")
 
 
 # --- scan -------------------------------------------------------------
@@ -259,7 +259,6 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if args.save_profile:
         settings.save_profile(args.save_profile, options)
         console.print(f"[green]saved profile[/] {args.save_profile}")
-    settings.save_last(options)
 
     view = None if quiet else ProgressView(console)
     if view:
@@ -335,12 +334,14 @@ def cmd_profiles(args: argparse.Namespace) -> int:
     if not names:
         console.print("No saved profiles. Create one in the UI (`whatsrisky ui`) or with --save-profile.")
         return 0
+    active = settings.active_profile()
     table = Table(title=f"profiles in {settings.config_path()}")
     table.add_column("Name")
     table.add_column("Equivalent command")
     for name in names:
         options = settings.load_profile(name)
-        table.add_row(name, options.command_line() if options else "-")
+        label = f"[bold]{name}[/] [dim](active)[/]" if name == active else name
+        table.add_row(label, options.command_line() if options else "-")
     console.print(table)
     return 0
 
@@ -451,6 +452,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ui = sub.add_parser("ui", help="interactive settings UI (default when run with no arguments)")
     ui.add_argument("path", nargs="?", help="project path to preload")
+    ui.add_argument("--profile", help="start from a saved profile (default: the active one)")
     ui.set_defaults(func=cmd_ui)
 
     doctor = sub.add_parser("doctor", help="check that the scanners are installed")
