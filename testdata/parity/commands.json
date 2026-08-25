@@ -1,0 +1,102 @@
+[
+  {
+    "options": {
+      "path": "/p"
+    },
+    "expect": "whatsrisky /p"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "tools": [
+        "semgrep"
+      ]
+    },
+    "expect": "whatsrisky /p --tools semgrep"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "tools": [
+        "semgrep",
+        "trivy",
+        "gitleaks",
+        "ai"
+      ],
+      "ai_provider": "openai",
+      "model": "gpt-5"
+    },
+    "expect": "whatsrisky /p --ai --ai-provider openai --model gpt-5"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "diff": "HEAD~1..HEAD",
+      "min_severity": "HIGH",
+      "fail_on": "high"
+    },
+    "expect": "whatsrisky /p --diff HEAD~1..HEAD --min-severity HIGH --fail-on high"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "exclude": [
+        "legacy",
+        "*.min.js"
+      ],
+      "use_default_excludes": false
+    },
+    "expect": "whatsrisky /p --exclude legacy --exclude *.min.js --no-default-excludes"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "formats": [
+        "json"
+      ],
+      "out_dir": "/tmp/r",
+      "out": "/tmp/r/a.docx",
+      "jobs": 1,
+      "offline": true
+    },
+    "expect": "whatsrisky /p --format json --out-dir /tmp/r --out /tmp/r/a.docx --semgrep-config p/security-audit --offline --jobs 1"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "baseline": "/tmp/b.json",
+      "compare": false,
+      "keep_work": true,
+      "open_report": true
+    },
+    "expect": "whatsrisky /p --baseline /tmp/b.json --no-compare --keep-work --open"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "tools": [
+        "ai"
+      ],
+      "ai_mode": "review",
+      "ai_timeout": 600,
+      "ai_max_findings": 10,
+      "ai_context_bytes": 1000,
+      "model": "sonnet"
+    },
+    "expect": "whatsrisky /p --ai --tools none --model sonnet --ai-mode review --ai-timeout 600 --ai-max-findings 10 --ai-context-bytes 1000"
+  },
+  {
+    "options": {
+      "path": "/p",
+      "semgrep_configs": [
+        "p/security-audit",
+        "p/owasp-top-ten"
+      ],
+      "trivy_scanners": "vuln",
+      "gitleaks_mode": "git",
+      "timeout": 60,
+      "max_per_severity": 5
+    },
+    "expect": "whatsrisky /p --semgrep-config p/security-audit --semgrep-config p/owasp-top-ten --trivy-scanners vuln --gitleaks-mode git --timeout 60 --max-per-severity 5"
+  }
+]

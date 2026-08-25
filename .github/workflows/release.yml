@@ -1,0 +1,58 @@
+name: Release
+
+# Tag vX.Y.Z on main and the binaries appear on the release. The version in the
+# tag must match cmd/whatsrisky/main.go, and the job refuses to publish if it does
+# not: a release whose binary reports a different version is worse than no release.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: The tag and the source must agree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          source_version="$(make -s print-version)"
+          if [ "$tag" != "$source_version" ]; then
+            echo "tag $tag but cmd/whatsrisky/main.go says $source_version" >&2
+            exit 1
+          fi
+          echo "releasing $tag"
+
+      - name: Test
+        run: go test ./... -short
+
+      - name: Build every platform
+        run: make build-all
+
+      - name: Release notes from the CHANGELOG
+        run: |
+          make -s release-notes > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for this version" >&2
+            exit 1
+          fi
+          cat notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            dist/*.tar.gz dist/checksums.txt

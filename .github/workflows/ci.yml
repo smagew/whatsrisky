@@ -7,14 +7,13 @@ on:
   workflow_dispatch:
 
 # Actions are pinned to commit SHAs and the tools to explicit versions: a mutable
-# tag or a `latest` download is an unreviewed change in a security tool. Semgrep
-# is pinned for a second reason - the self-scan gate below must fail because our
-# code changed, not because the registry shipped a new rule overnight.
+# tag or a `latest` download is an unreviewed change in a security tool. Semgrep is
+# pinned for a second reason - the self-scan gate must fail because our code
+# changed, not because the registry shipped a new rule overnight.
 env:
   SEMGREP_VERSION: "1.174.0"
   TRIVY_VERSION: "0.74.0"
   GITLEAKS_VERSION: "8.30.1"
-  # The scan gate uses a fixed ruleset rather than `auto` for the same reason.
   SELF_SCAN_RULES: "p/security-audit"
 
 permissions:
@@ -22,44 +21,42 @@ permissions:
 
 jobs:
   unit:
-    name: unit · python ${{ matrix.python }}
-    runs-on: ubuntu-latest
+    name: unit · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          enable-cache: true
-          python-version: ${{ matrix.python }}
-      # Two things this step has to survive. A uv-managed interpreter refuses
-      # --system ("externally managed"), so the work happens in a venv and every
-      # command goes through `uv run`. And setup-uv has already created that venv
-      # when given a python-version, so creating it must tolerate one being there.
-      - name: Create the environment
-        run: |
-          uv venv --python ${{ matrix.python }} --allow-existing
-          uv pip install -e ".[dev]"
+          go-version-file: go.mod
+          cache: true
       - name: Lint
-        run: uv run python -m pyflakes whatsrisky tests
-      - name: Unit tests
-        run: uv run python -m pytest tests -q -m "not integration"
+        if: runner.os != 'Windows'
+        run: |
+          test -z "$(gofmt -l cmd internal)" || (gofmt -l cmd internal; exit 1)
+          go vet ./...
+      # -short skips everything that needs a scanner binary, so this job proves the
+      # tool builds and its logic holds on a machine with nothing installed.
+      - name: Tests
+        run: go test ./... -short
 
   integration:
     name: integration · real scanners
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          enable-cache: true
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
           python-version: "3.12"
-      - name: Create the environment
-        run: |
-          uv venv --python 3.12 --allow-existing
-          uv pip install -e ".[dev]" "semgrep==${SEMGREP_VERSION}"
+      - name: Install semgrep ${{ env.SEMGREP_VERSION }}
+        run: pipx install "semgrep==${SEMGREP_VERSION}"
       - name: Install trivy ${{ env.TRIVY_VERSION }}
         run: |
           curl -sSLf "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
@@ -69,9 +66,9 @@ jobs:
           curl -sSLf "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
       - name: Versions
-        run: uv run whatsrisky doctor || true
-      - name: Integration tests
-        run: uv run python -m pytest tests -q -m integration
+        run: go run ./cmd/whatsrisky doctor || true
+      - name: Tests against the real binaries
+        run: go test ./... -timeout 20m
 
   selfscan:
     name: self-scan
@@ -79,23 +76,24 @@ jobs:
     needs: unit
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          enable-cache: true
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
           python-version: "3.12"
-      - name: Create the environment
+      - name: Install the scanners
         run: |
-          uv venv --python 3.12 --allow-existing
-          uv pip install -e ".[dev]" "semgrep==${SEMGREP_VERSION}"
-      - name: Install gitleaks ${{ env.GITLEAKS_VERSION }}
-        run: |
+          pipx install "semgrep==${SEMGREP_VERSION}"
           curl -sSLf "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
       # Dogfooding: whatsrisky must stay clean under its own HIGH bar. The report is
       # uploaded either way, so a failure here can be read rather than guessed at.
       - name: Scan ourselves
         run: |
-          uv run whatsrisky . --tools semgrep,gitleaks \
+          go build -o dist/whatsrisky ./cmd/whatsrisky
+          ./dist/whatsrisky . --tools semgrep,gitleaks \
             --semgrep-config "${SELF_SCAN_RULES}" \
             --format json,html --no-compare --fail-on high
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -103,3 +101,17 @@ jobs:
         with:
           name: self-scan-report
           path: whatsrisky-reports/
+
+  build:
+    name: cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Every release platform has to compile on every pull request, not first at
+      # release time.
+      - name: Build every platform
+        run: make build-all

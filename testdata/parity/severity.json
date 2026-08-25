@@ -1,0 +1,51 @@
+{
+  "order": [
+    "CRITICAL",
+    "HIGH",
+    "MEDIUM",
+    "LOW",
+    "INFO"
+  ],
+  "weights": {
+    "CRITICAL": 40.0,
+    "HIGH": 10.0,
+    "MEDIUM": 3.0,
+    "LOW": 1.0,
+    "INFO": 0.1
+  },
+  "parse": {
+    "CRITICAL": "CRITICAL",
+    "critical": "CRITICAL",
+    "ERROR": "HIGH",
+    "error": "HIGH",
+    "HIGH": "HIGH",
+    "WARNING": "MEDIUM",
+    "warn": "MEDIUM",
+    "MEDIUM": "MEDIUM",
+    "moderate": "MEDIUM",
+    "LOW": "LOW",
+    "minor": "LOW",
+    "note": "LOW",
+    "INFO": "INFO",
+    "unknown": "INFO",
+    "none": "INFO",
+    "": "INFO",
+    "nonsense": "INFO"
+  },
+  "evidence": {
+    "marked": "run(cmd, shell=True)",
+    "unmarked": "def f(): return 1",
+    "empty": ""
+  },
+  "sources": {
+    "gitleaks|git|a.py": "git-history",
+    "gitleaks|dir|a.py": "source-code",
+    "trivy|vuln|requirements.txt": "dependency-manifest",
+    "trivy|misconfig|Dockerfile": "container",
+    "trivy|misconfig|main.tf": "iac",
+    "trivy|misconfig|k8s/deploy.yaml": "iac",
+    "semgrep|code|.github/workflows/ci.yml": "ci-config",
+    "semgrep|code|src/app.py": "source-code",
+    "ai|full|docker-compose.yml": "container"
+  }
+}
