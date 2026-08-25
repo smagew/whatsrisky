@@ -29,6 +29,16 @@ One static binary, no runtime. Or grab an archive from
 [releases](https://github.com/smagew/whatsrisky/releases), or `go install
 github.com/smagew/whatsrisky/cmd/whatsrisky@latest`.
 
+From a clone, to run whatever is checked out:
+
+```bash
+make install                    # builds onto ~/.local/bin
+make install PREFIX=/usr/local/bin
+```
+
+Re-run it after switching branches: a binary does not follow the source the way an
+editable Python install did.
+
 The three scanners are separate binaries (`semgrep`, `trivy`, `gitleaks`) —
 `doctor` tells you what is missing and how to get it on your platform. The AI pass
 is **off by default**: it spends tokens on your account and sends code to a third
