@@ -1,6 +1,6 @@
 # Rewriting in Go — specification
 
-Status: **agreed, in progress.** DOCX is dropped; see the cost below.
+Status: **phases 1-2 done**, see the checklists. DOCX is dropped; see the cost below.
 
 ## Why
 
@@ -92,7 +92,9 @@ The Python implementation is the specification. During the rewrite, both run on
 the same fixture and their reports are compared field by field, ignoring the
 fields that must differ (timestamps, durations, scan ids, absolute paths).
 
-`make diff-parity` does this. A finding that one implementation reports and the
+`make diff-parity` does this, and as of phase 2 it reports 28 findings identical
+in both implementations - tool, rule, file, line, severity, category, source and
+fingerprint. A finding that one implementation reports and the
 other does not is a failure, and so is a differing severity, category, source,
 detector or identity key. This is what turns "we rewrote it faithfully" into
 something a machine checks.
@@ -112,12 +114,12 @@ something a machine checks.
       into `testdata/`, asserted by the Go tests.
 
 ### Phase 2 — running the scanners
-- [ ] Streaming process runner with per-tool timeout and a progress callback.
-- [ ] semgrep, trivy, gitleaks: the same arguments, the same parsing, the same
+- [x] Streaming process runner with per-tool timeout and a progress callback.
+- [x] semgrep, trivy, gitleaks: the same arguments, the same parsing, the same
       severity mapping, the same honest notes (Trivy still says it ignores `--diff`).
-- [ ] Exclusions: the same pattern semantics, the generated gitleaks allowlist, the
+- [x] Exclusions: the same pattern semantics, the generated gitleaks allowlist, the
       post-filter with a count, and never scanning our own output.
-- [ ] Integration tests against the real binaries, as now.
+- [x] Integration tests against the real binaries, as now.
 
 ### Phase 3 — the AI pass
 - [ ] The backend contract with `agentic`, claude-cli via stream-json, OpenAI over
@@ -130,6 +132,9 @@ something a machine checks.
 - [ ] The viewer embedded and byte-identical to the current file.
 - [ ] Markdown writer.
 - [ ] Every flag, `doctor`, `profiles`, `--show-excludes`, `--json-stdout`, `--quiet`.
+- [ ] `--format docx` is refused with a reason ("removed in 0.3.0; print the HTML
+      report, or use the tagged v0.2.0"), never silently ignored. A dropped feature
+      that fails quietly is worse than one that fails loudly.
 - [ ] Live report written before the first scanner and after each one.
 
 ### Phase 5 — the terminal UI

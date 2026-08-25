@@ -16,7 +16,9 @@ import json
 from pathlib import Path
 
 from whatsrisky import categories
+from whatsrisky.core import DEFAULT_EXCLUDES, ScanOptions
 from whatsrisky.compare import correlate
+from whatsrisky.util import path_excluded, pattern_to_regex
 from whatsrisky.models import (
     SEVERITY_ORDER,
     Finding,
@@ -216,6 +218,65 @@ def comparison() -> None:
     write("compare.json", out)
 
 
+EXCLUDE_CASES = [
+    ("node_modules/pkg/a.js", ["node_modules"]),
+    ("src/node_modules/a.js", ["node_modules"]),
+    ("src/app.py", ["node_modules"]),
+    ("src/generated/api.py", ["src/generated"]),
+    ("src/generated_other/api.py", ["src/generated"]),
+    ("dist/app.min.js", ["*.min.js"]),
+    ("src/app.js", ["*.min.js"]),
+    ("vendor/lib/x.go", ["vendor/"]),
+    ("", ["vendor"]),
+    ("a/b/c/node_modules/d/e.js", ["node_modules", "dist"]),
+    ("Pods/Alamofire/x.swift", DEFAULT_EXCLUDES),
+    ("src/main.go", DEFAULT_EXCLUDES),
+    ("coverage/lcov.info", DEFAULT_EXCLUDES),
+    ("build/out.js", ["src/generated", "*.map"]),
+    ("web/static/app.js.map", ["*.map"]),
+]
+
+COMMAND_CASES = [
+    dict(path="/p"),
+    dict(path="/p", tools=["semgrep"]),
+    dict(path="/p", tools=["semgrep", "trivy", "gitleaks", "ai"], ai_provider="openai", model="gpt-5"),
+    dict(path="/p", diff="HEAD~1..HEAD", min_severity="HIGH", fail_on="high"),
+    dict(path="/p", exclude=["legacy", "*.min.js"], use_default_excludes=False),
+    dict(path="/p", formats=["json"], out_dir="/tmp/r", out="/tmp/r/a.docx", jobs=1, offline=True),
+    dict(path="/p", baseline="/tmp/b.json", compare=False, keep_work=True, open_report=True),
+    dict(path="/p", tools=["ai"], ai_mode="review", ai_timeout=600, ai_max_findings=10,
+         ai_context_bytes=1000, model="sonnet"),
+    dict(path="/p", semgrep_configs=["p/security-audit", "p/owasp-top-ten"],
+         trivy_scanners="vuln", gitleaks_mode="git", timeout=60, max_per_severity=5),
+]
+
+
+def excludes() -> None:
+    write("excludes.json", {
+        "defaults": DEFAULT_EXCLUDES,
+        "match": [
+            {"path": path, "patterns": patterns, "expect": path_excluded(path, patterns)}
+            for path, patterns in EXCLUDE_CASES
+        ],
+        "regex": {p: pattern_to_regex(p) for p in
+                  ["node_modules", "src/generated", "*.min.js", "vendor/", "", "a?c"]},
+        "effective": [
+            {"user": ["mydir", "node_modules"], "defaults": True,
+             "expect": ScanOptions(path="/p", exclude=["mydir", "node_modules"]).effective_excludes()},
+            {"user": ["mydir"], "defaults": False,
+             "expect": ScanOptions(path="/p", exclude=["mydir"],
+                                   use_default_excludes=False).effective_excludes()},
+        ],
+    })
+
+
+def commands() -> None:
+    write("commands.json", [
+        {"options": case, "expect": ScanOptions(**case).normalized().command_line()}
+        for case in COMMAND_CASES
+    ])
+
+
 if __name__ == "__main__":
     print("writing the parity specification:")
     findings()
@@ -223,3 +284,5 @@ if __name__ == "__main__":
     severity()
     risk()
     comparison()
+    excludes()
+    commands()

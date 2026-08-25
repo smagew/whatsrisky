@@ -1,0 +1,384 @@
+{
+  "defaults": [
+    ".git",
+    ".hg",
+    ".svn",
+    "node_modules",
+    "bower_components",
+    "jspm_packages",
+    "vendor",
+    "third_party",
+    "thirdparty",
+    "Pods",
+    "Carthage",
+    ".venv",
+    "venv",
+    "env",
+    "virtualenv",
+    "site-packages",
+    "dist",
+    "build",
+    "out",
+    "target",
+    "bin",
+    "obj",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".output",
+    ".parcel-cache",
+    ".turbo",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".gradle",
+    ".m2",
+    ".cargo",
+    ".terraform",
+    ".serverless",
+    "coverage",
+    "htmlcov",
+    ".nyc_output",
+    "*.min.js",
+    "*.min.css",
+    "*.map",
+    "*.lock.json",
+    ".idea",
+    ".vscode",
+    ".DS_Store",
+    "whatsrisky-reports"
+  ],
+  "match": [
+    {
+      "path": "node_modules/pkg/a.js",
+      "patterns": [
+        "node_modules"
+      ],
+      "expect": true
+    },
+    {
+      "path": "src/node_modules/a.js",
+      "patterns": [
+        "node_modules"
+      ],
+      "expect": true
+    },
+    {
+      "path": "src/app.py",
+      "patterns": [
+        "node_modules"
+      ],
+      "expect": false
+    },
+    {
+      "path": "src/generated/api.py",
+      "patterns": [
+        "src/generated"
+      ],
+      "expect": true
+    },
+    {
+      "path": "src/generated_other/api.py",
+      "patterns": [
+        "src/generated"
+      ],
+      "expect": false
+    },
+    {
+      "path": "dist/app.min.js",
+      "patterns": [
+        "*.min.js"
+      ],
+      "expect": true
+    },
+    {
+      "path": "src/app.js",
+      "patterns": [
+        "*.min.js"
+      ],
+      "expect": false
+    },
+    {
+      "path": "vendor/lib/x.go",
+      "patterns": [
+        "vendor/"
+      ],
+      "expect": true
+    },
+    {
+      "path": "",
+      "patterns": [
+        "vendor"
+      ],
+      "expect": false
+    },
+    {
+      "path": "a/b/c/node_modules/d/e.js",
+      "patterns": [
+        "node_modules",
+        "dist"
+      ],
+      "expect": true
+    },
+    {
+      "path": "Pods/Alamofire/x.swift",
+      "patterns": [
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "bower_components",
+        "jspm_packages",
+        "vendor",
+        "third_party",
+        "thirdparty",
+        "Pods",
+        "Carthage",
+        ".venv",
+        "venv",
+        "env",
+        "virtualenv",
+        "site-packages",
+        "dist",
+        "build",
+        "out",
+        "target",
+        "bin",
+        "obj",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        ".output",
+        ".parcel-cache",
+        ".turbo",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".gradle",
+        ".m2",
+        ".cargo",
+        ".terraform",
+        ".serverless",
+        "coverage",
+        "htmlcov",
+        ".nyc_output",
+        "*.min.js",
+        "*.min.css",
+        "*.map",
+        "*.lock.json",
+        ".idea",
+        ".vscode",
+        ".DS_Store",
+        "whatsrisky-reports"
+      ],
+      "expect": true
+    },
+    {
+      "path": "src/main.go",
+      "patterns": [
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "bower_components",
+        "jspm_packages",
+        "vendor",
+        "third_party",
+        "thirdparty",
+        "Pods",
+        "Carthage",
+        ".venv",
+        "venv",
+        "env",
+        "virtualenv",
+        "site-packages",
+        "dist",
+        "build",
+        "out",
+        "target",
+        "bin",
+        "obj",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        ".output",
+        ".parcel-cache",
+        ".turbo",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".gradle",
+        ".m2",
+        ".cargo",
+        ".terraform",
+        ".serverless",
+        "coverage",
+        "htmlcov",
+        ".nyc_output",
+        "*.min.js",
+        "*.min.css",
+        "*.map",
+        "*.lock.json",
+        ".idea",
+        ".vscode",
+        ".DS_Store",
+        "whatsrisky-reports"
+      ],
+      "expect": false
+    },
+    {
+      "path": "coverage/lcov.info",
+      "patterns": [
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "bower_components",
+        "jspm_packages",
+        "vendor",
+        "third_party",
+        "thirdparty",
+        "Pods",
+        "Carthage",
+        ".venv",
+        "venv",
+        "env",
+        "virtualenv",
+        "site-packages",
+        "dist",
+        "build",
+        "out",
+        "target",
+        "bin",
+        "obj",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        ".output",
+        ".parcel-cache",
+        ".turbo",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".gradle",
+        ".m2",
+        ".cargo",
+        ".terraform",
+        ".serverless",
+        "coverage",
+        "htmlcov",
+        ".nyc_output",
+        "*.min.js",
+        "*.min.css",
+        "*.map",
+        "*.lock.json",
+        ".idea",
+        ".vscode",
+        ".DS_Store",
+        "whatsrisky-reports"
+      ],
+      "expect": true
+    },
+    {
+      "path": "build/out.js",
+      "patterns": [
+        "src/generated",
+        "*.map"
+      ],
+      "expect": false
+    },
+    {
+      "path": "web/static/app.js.map",
+      "patterns": [
+        "*.map"
+      ],
+      "expect": true
+    }
+  ],
+  "regex": {
+    "node_modules": "(^|/)node_modules(/|$)",
+    "src/generated": "(^|/)src/generated(/|$)",
+    "*.min.js": "(^|/)[^/]*\\.min\\.js(/|$)",
+    "vendor/": "(^|/)vendor(/|$)",
+    "": "",
+    "a?c": "(^|/)a[^/]c(/|$)"
+  },
+  "effective": [
+    {
+      "user": [
+        "mydir",
+        "node_modules"
+      ],
+      "defaults": true,
+      "expect": [
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "bower_components",
+        "jspm_packages",
+        "vendor",
+        "third_party",
+        "thirdparty",
+        "Pods",
+        "Carthage",
+        ".venv",
+        "venv",
+        "env",
+        "virtualenv",
+        "site-packages",
+        "dist",
+        "build",
+        "out",
+        "target",
+        "bin",
+        "obj",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        ".output",
+        ".parcel-cache",
+        ".turbo",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".gradle",
+        ".m2",
+        ".cargo",
+        ".terraform",
+        ".serverless",
+        "coverage",
+        "htmlcov",
+        ".nyc_output",
+        "*.min.js",
+        "*.min.css",
+        "*.map",
+        "*.lock.json",
+        ".idea",
+        ".vscode",
+        ".DS_Store",
+        "whatsrisky-reports",
+        "mydir"
+      ]
+    },
+    {
+      "user": [
+        "mydir"
+      ],
+      "defaults": false,
+      "expect": [
+        "mydir"
+      ]
+    }
+  ]
+}

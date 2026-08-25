@@ -62,3 +62,23 @@ func Truncate(text string, limit int) string {
 	}
 	return strings.TrimRight(string([]rune(text)[:limit-1]), " ") + "…"
 }
+
+var (
+	// LLMs emit almost-JSON. These are the mistakes they actually make.
+	jsonRange     = regexp.MustCompile(`(:\s*)(\d+)\s*[-–]\s*\d+(\s*[,}\]])`)
+	jsonTrailing  = regexp.MustCompile(`,(\s*[}\]])`)
+	jsonPyLiteral = regexp.MustCompile(`(:\s*)(None|True|False|NaN|Infinity)(\s*[,}\]])`)
+	pythonToJSON  = map[string]string{"None": "null", "True": "true", "False": "false", "NaN": "null", "Infinity": "null"}
+)
+
+// RepairJSON fixes numeric ranges ("line": 15-38), trailing commas and Python
+// literals. Everything else is left to the parser: an audit must not be lost to a
+// formatting slip, but nor should it be guessed at.
+func RepairJSON(text string) string {
+	text = jsonRange.ReplaceAllString(text, "${1}${2}${3}")
+	text = jsonTrailing.ReplaceAllString(text, "${1}")
+	return jsonPyLiteral.ReplaceAllStringFunc(text, func(match string) string {
+		parts := jsonPyLiteral.FindStringSubmatch(match)
+		return parts[1] + pythonToJSON[parts[2]] + parts[3]
+	})
+}

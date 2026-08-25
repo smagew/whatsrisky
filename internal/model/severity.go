@@ -99,3 +99,12 @@ func roundHalfEven(value float64) int {
 		return int(floor) + 1
 	}
 }
+
+// ParseSeverityStrict maps through a scanner's own table first, then the shared
+// aliases. A scanner whose "ERROR" means something specific gets to say so.
+func ParseSeverityStrict(raw string, table map[string]Severity, def Severity) Severity {
+	if mapped, ok := table[strings.ToUpper(strings.TrimSpace(raw))]; ok {
+		return mapped
+	}
+	return ParseSeverity(raw, def)
+}

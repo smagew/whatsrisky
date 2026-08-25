@@ -3,7 +3,7 @@
 
 PY ?= python3
 
-.PHONY: help check lint test test-all selfscan check-ci clean go-test go-lint parity
+.PHONY: help check lint test test-all selfscan check-ci clean go-test go-lint parity diff-parity
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t22
@@ -57,6 +57,12 @@ go-test: go-lint  ## the Go test suite
 parity:  ## regenerate testdata/parity from the Python implementation
 	$(PY) scripts/gen_parity.py
 	go test ./...
+
+# "We ported it faithfully" is a claim; this is a check. Both implementations scan
+# the same fixture and every finding must agree, fingerprints included - a Go scan
+# has to be able to correlate against a baseline a Python scan wrote.
+diff-parity:  ## scan one fixture with both implementations and diff the findings
+	go test ./internal/runner/ -run GoAndPython -v
 
 clean:  ## remove build and report artifacts
 	rm -rf whatsrisky-reports .pytest_cache dist build *.egg-info
