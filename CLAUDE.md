@@ -14,14 +14,13 @@ practices is a bug unless the divergence is deliberate and written down.
 ## Commands
 
 ```bash
-uv venv && uv pip install -e ".[dev]"     # dev environment
-python -m pytest tests -q                 # unit + integration (integration skips without binaries)
-python -m pytest tests -q -m "not integration"
-python -m pyflakes whatsrisky tests       # lint
-whatsrisky . --fail-on high               # dogfood: this repo must stay clean
+uv venv && uv pip install -e ".[dev]"   # dev environment
+make check       # lint + unit tests + the self-scan gate
+make test-all    # adds the integration tests (needs the scanner binaries)
+make check-ci    # runs the CI job steps against a clean export of HEAD
 ```
 
-Run the whole suite, the lint, and the self-scan before every push.
+`make check` before every push, `make check-ci` before touching the workflow.
 
 ## Architecture
 
@@ -104,6 +103,12 @@ For any non-trivial change, in order:
   widget, and the `command_line()` case together. A setting that exists in only
   one front end is a bug: the UI's "equivalent command" panel is what keeps the
   CLI and the UI honest.
+- **Two independent versions, both contracts.** `whatsrisky/__init__.py` holds the
+  package version and nothing else does — `pyproject.toml` reads it through
+  `[tool.hatch.version]`, so a wheel cannot disagree with the reports it writes.
+  `SCHEMA_VERSION` in `models.py` versions the JSON report and moves on its own
+  schedule. A change that ships bumps the package version and closes a CHANGELOG
+  section in the same PR; `tests/test_version.py` fails when either is missing.
 - **JSON changes bump `SCHEMA_VERSION`.** Other tools consume the report;
   `schema/report.schema.json` is a contract, not documentation.
 - **Design system** (when a viewer exists): the same rules as whydiff, because the
@@ -118,6 +123,15 @@ For any non-trivial change, in order:
 - **Branching.** Trunk-based: short branches named by intent (`feat/…`, `fix/…`,
   `chore/…`), one PR each, deleted after merge. Conventional commit subjects
   (`feat(core):`, `fix(ui):`, `chore(release):`).
+
+## Release
+
+1. Bump `__version__` in `whatsrisky/__init__.py` (semver: a report-schema change or
+   a new pass is a minor, a fix is a patch).
+2. Rename the CHANGELOG's `[Unreleased]` heading to `[X.Y.Z] - YYYY-MM-DD` and open a
+   fresh empty `[Unreleased]` above it.
+3. `python -m pytest tests -q` — the version tests check both.
+4. Merge, then tag `vX.Y.Z` on main.
 
 ## Gotchas
 
@@ -135,6 +149,11 @@ costs time.
   `Finding.__post_init__` and at each DOCX insertion point.
 - **gitleaks has no exclude flag.** Paths are excluded through a generated config
   with `[extend] useDefault = true` + `[[allowlists]] paths` (verified on 8.30.1).
+- **CI failures here have been about the runner, not the commands.** `uv pip
+  install --system` fails on the uv-managed interpreter setup-uv provides, and
+  `uv venv` fails because setup-uv has already created one — so every job needs
+  `--allow-existing` and `uv run`. `make check-ci` reproduces both preconditions
+  against a clean export; `tests/test_design.py` guards them.
 - **A stub server is how the API backends are tested.** `tests/test_ai.py` runs a
   local `ThreadingHTTPServer` speaking the chat-completions shape, so request
   construction, context injection and every error path are covered without a key.
@@ -142,4 +161,7 @@ costs time.
 - **`semgrep --config auto` needs the network and metrics.** With `--offline` it
   falls back to `p/security-audit`; `--metrics off` breaks `auto`.
 - **Semgrep suppressions anchor on the call site**, not on the flagged argument's
-  line: `# nosemgrep: rule-id` goes on the line the finding reports.
+  line: `# nosemgrep: rule-id` goes on the line the finding reports. It must also be
+  the line *immediately* before it — a two-line comment pushes the marker out of
+  range and the suppression silently does nothing. Put the reason on the first
+  line and `# nosemgrep: rule-id` alone on the last.

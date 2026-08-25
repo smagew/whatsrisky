@@ -1,6 +1,6 @@
 [project]
 name = "whatsrisky"
-version = "0.1.0"
+dynamic = ["version"]
 description = "What's risky in this project? Semgrep + Trivy + gitleaks + Claude, merged into one prioritized security report (DOCX/MD/JSON)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,6 +37,9 @@ Changelog = "https://github.com/smagew/whatsrisky/blob/main/CHANGELOG.md"
 
 [project.scripts]
 whatsrisky = "whatsrisky.cli:main"
+
+[tool.hatch.version]
+path = "whatsrisky/__init__.py"
 
 [build-system]
 requires = ["hatchling"]

@@ -6,11 +6,16 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Actions are pinned to commit SHAs and the scanners to explicit versions: a
-# mutable tag or a `latest` download is an unreviewed change in a security tool.
+# Actions are pinned to commit SHAs and the tools to explicit versions: a mutable
+# tag or a `latest` download is an unreviewed change in a security tool. Semgrep
+# is pinned for a second reason - the self-scan gate below must fail because our
+# code changed, not because the registry shipped a new rule overnight.
 env:
+  SEMGREP_VERSION: "1.174.0"
   TRIVY_VERSION: "0.74.0"
   GITLEAKS_VERSION: "8.30.1"
+  # The scan gate uses a fixed ruleset rather than `auto` for the same reason.
+  SELF_SCAN_RULES: "p/security-audit"
 
 permissions:
   contents: read
@@ -25,28 +30,36 @@ jobs:
         python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - name: Install
-        run: uv pip install --system -e ".[dev]"
+      # Two things this step has to survive. A uv-managed interpreter refuses
+      # --system ("externally managed"), so the work happens in a venv and every
+      # command goes through `uv run`. And setup-uv has already created that venv
+      # when given a python-version, so creating it must tolerate one being there.
+      - name: Create the environment
+        run: |
+          uv venv --python ${{ matrix.python }} --allow-existing
+          uv pip install -e ".[dev]"
       - name: Lint
-        run: python -m pyflakes whatsrisky tests
+        run: uv run python -m pyflakes whatsrisky tests
       - name: Unit tests
-        run: python -m pytest tests -q -m "not integration"
+        run: uv run python -m pytest tests -q -m "not integration"
 
   integration:
     name: integration · real scanners
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: "3.12"
-      - name: Install whatsrisky and semgrep
-        run: uv pip install --system -e ".[dev]" semgrep
+      - name: Create the environment
+        run: |
+          uv venv --python 3.12 --allow-existing
+          uv pip install -e ".[dev]" "semgrep==${SEMGREP_VERSION}"
       - name: Install trivy ${{ env.TRIVY_VERSION }}
         run: |
           curl -sSLf "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
@@ -56,9 +69,9 @@ jobs:
           curl -sSLf "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
       - name: Versions
-        run: whatsrisky doctor || true
+        run: uv run whatsrisky doctor || true
       - name: Integration tests
-        run: python -m pytest tests -q -m integration
+        run: uv run python -m pytest tests -q -m integration
 
   selfscan:
     name: self-scan
@@ -66,19 +79,25 @@ jobs:
     needs: unit
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: "3.12"
-      - name: Install whatsrisky and semgrep
-        run: uv pip install --system -e ".[dev]" semgrep
+      - name: Create the environment
+        run: |
+          uv venv --python 3.12 --allow-existing
+          uv pip install -e ".[dev]" "semgrep==${SEMGREP_VERSION}"
       - name: Install gitleaks ${{ env.GITLEAKS_VERSION }}
         run: |
           curl -sSLf "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
-      # Dogfooding: whatsrisky must stay clean under its own HIGH bar.
+      # Dogfooding: whatsrisky must stay clean under its own HIGH bar. The report is
+      # uploaded either way, so a failure here can be read rather than guessed at.
       - name: Scan ourselves
-        run: whatsrisky . --tools semgrep,gitleaks --format json --fail-on high
+        run: |
+          uv run whatsrisky . --tools semgrep,gitleaks \
+            --semgrep-config "${SELF_SCAN_RULES}" \
+            --format json,html --no-compare --fail-on high
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

@@ -79,16 +79,24 @@ settings cannot work.
 
 `r` runs the scan on a live-progress screen; `ctrl+s` saves the current form as a named **profile**.
 
-Profiles work from the CLI too, so the UI and CI can share one configuration:
+The profile picker is the first thing in the form, and the one you saved is the one the next launch
+starts from — the window title says which. Profiles work from the CLI too, so the UI and CI share one
+configuration:
 
 ```bash
+whatsrisky ui --profile ci-fast                     # open the UI on a profile
 whatsrisky ~/www/app --profile ci-fast              # run a saved profile
 whatsrisky ~/www/app --profile ci-fast --ai         # profile, then override
-whatsrisky ~/www/app --save-profile nightly        # save while scanning
-whatsrisky profiles                                 # list  ·  --delete NAME to remove
+whatsrisky ~/www/app --save-profile nightly         # save while scanning
+whatsrisky profiles                                 # list, with the active one marked
 ```
 
-Everything lives in `~/.config/whatsrisky/config.json`; the last run is remembered.
+A profile says **how** to scan, not **what**: the project path, the git range, the baseline and an
+explicit output file are per-invocation and are not stored, so reusing a profile on another project
+cannot drag the old project along with it.
+
+Everything lives in `~/.config/whatsrisky/config.json`. The UI remembers its own form; a CLI run does
+not overwrite it, so a scripted `--out-dir /tmp/x` cannot leak into the interactive defaults.
 
 ### What gets skipped
 
@@ -291,9 +299,9 @@ Tool-native severities are mapped onto one scale (`whatsrisky/models.py`):
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-python -m pytest tests -q                        # unit + integration (integration skips without binaries)
-python -m pytest tests -q -m "not integration"   # unit only
-python -m pyflakes whatsrisky tests
+make check       # lint + unit tests + the self-scan gate
+make test-all    # adds the integration tests (needs semgrep, trivy, gitleaks)
+make check-ci    # replays the CI job steps against a clean export of HEAD
 ```
 
 The vulnerable sample project used by the integration tests is generated at test time

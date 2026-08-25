@@ -216,3 +216,22 @@ def test_a_scan_through_the_openai_backend(stub, project, tmp_path):
     # The report has to say the model was handed a slice, not the repository.
     assert "was given a fixed context" in note
     assert "cannot read the repository itself" in note
+
+
+def test_the_base_url_cannot_smuggle_a_scheme(tmp_path, monkeypatch):
+    """urlopen speaks file:// too, so an env var must not become arbitrary IO."""
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    for bad in ("file:///etc/passwd", "ftp://example.invalid/x", "/etc/passwd", "not a url"):
+        monkeypatch.setenv("OPENAI_BASE_URL", bad)
+        with pytest.raises(ValueError, match="must be an http"):
+            make_backend("openai", tmp_path, tmp_path)
+
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://proxy.example.invalid/v1/")
+    backend = make_backend("openai", tmp_path, tmp_path)
+    assert backend.base_url == "https://proxy.example.invalid/v1"   # trailing slash trimmed
+
+
+def test_a_dynamic_url_rule_is_categorised_as_ssrf():
+    from whatsrisky.categories import classify
+
+    assert classify(rule_id="python.lang.security.audit.dynamic-urllib-use-detected") == "ssrf"

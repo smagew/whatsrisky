@@ -7,6 +7,32 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- `Makefile` with `check`, `test-all`, `selfscan` and `check-ci`. The last one replays the CI job
+  steps against a clean export of HEAD *with the runner's preconditions* — a uv-managed interpreter
+  and a `.venv` that setup-uv has already created — because both CI failures so far were about those
+  rather than about the commands.
+
+### Fixed
+
+- A saved profile is what the next launch starts from. Saving one records it as active, the picker
+  opens on it and the window title names it; previously the UI always reopened on the last run and a
+  profile had to be found and re-chosen by hand.
+- The profile picker is the first block in the form instead of the last block of the side panel, the
+  blank entry means "not in a profile" rather than doing nothing, and re-picking the active profile
+  reloads it.
+- A profile no longer carries the project path, the git range, the baseline or an explicit output
+  file. Those are per-invocation; storing them meant a profile reused elsewhere dragged the old
+  project with it. Existing profiles are cleaned up by a config migration.
+- "View report" opens the page or nothing. It used to fall back to the JSON file when a run wrote no
+  HTML, which looked like a broken button. Profiles saved before the HTML view existed had
+  `formats: ["json"]` and hit exactly that; the migration adds `html` back to them.
+- A CLI run no longer overwrites what the UI remembers, so a scripted `--out-dir /tmp/x` cannot end
+  up as the interactive default.
+
+## [0.2.0] - 2026-08-25
+
+### Added
+
 - The AI pass is provider-neutral (`schema_version: 3`). `whatsrisky/ai/` holds the backends and
   `--ai-provider` picks one: `claude-cli` as before, or `openai` over the API with the key from the
   environment (`OPENAI_API_KEY`, `OPENAI_BASE_URL` to point elsewhere). `--model` is free-form and
@@ -70,6 +96,9 @@ All notable changes to this project are documented here. This project follows
   `misconfiguration` instead of `other`. On the fixture project `other` went from 2% to 0%.
 - A scan no longer discovers its own reports. Output directories are marked, so a second run does not
   re-report the secrets quoted in the first run's report.
+- `OPENAI_BASE_URL` is validated as an http(s) URL with a host. `urlopen` speaks `file://` too, so an
+  unchecked environment variable turned "point it at a compatible endpoint" into reading a local
+  file. Found by scanning ourselves.
 
 ## [0.1.0] - 2026-08-24
 

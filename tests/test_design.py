@@ -148,3 +148,38 @@ def test_a_verdict_never_outruns_its_coverage():
     report.tools = [ToolResult(name="semgrep", status="ok")]
     report.status = "complete"
     assert report.verdict() == "MODERATE - plan remediation"
+
+
+# --- the workflow is code too -----------------------------------------
+def test_ci_pins_actions_to_commits_and_tools_to_versions():
+    """A mutable tag or a `latest` download is an unreviewed change in a security tool.
+
+    Also guards the mistake that broke the first CI run: a uv-managed interpreter
+    refuses `uv pip install --system`, so every command must go through a venv.
+    """
+    import re
+
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert not re.search(r"uses:\s+[^@\s]+@v\d", workflow), "an action is pinned to a mutable tag"
+    for _, sha in re.findall(r"uses:\s+([^@\s]+)@(\S+)", workflow):
+        sha = sha.split()[0]
+        assert re.fullmatch(r"[0-9a-f]{40}", sha), f"not a commit SHA: {sha}"
+
+    # Comments mention the flag to explain its absence, so look at the commands.
+    commands = "\n".join(
+        line for line in workflow.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "--system" not in commands, "uv pip install --system fails on a uv-managed interpreter"
+    creates = re.findall(r"uv venv[^\n]*", commands)
+    assert len(creates) >= 3, "each job needs its own environment"
+    for line in creates:
+        assert "--allow-existing" in line or "--clear" in line, (
+            f"setup-uv has already made a .venv, so this fails on 'already exists': {line}"
+        )
+
+    # Downloads must name a version, never `latest`.
+    for url in re.findall(r"https://github\.com/\S+/releases/\S+", workflow):
+        assert "latest" not in url, f"a latest download is not reproducible: {url}"
+    assert 'SEMGREP_VERSION: "' in workflow, "the self-scan gate needs a pinned scanner"
+    assert 'SELF_SCAN_RULES: "p/' in workflow, "and a pinned ruleset, or `auto` breaks it overnight"
