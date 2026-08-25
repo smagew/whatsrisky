@@ -171,7 +171,12 @@ def test_ci_pins_actions_to_commits_and_tools_to_versions():
         line for line in workflow.splitlines() if not line.lstrip().startswith("#")
     )
     assert "--system" not in commands, "uv pip install --system fails on a uv-managed interpreter"
-    assert workflow.count("uv venv") >= 3, "each job needs its own environment"
+    creates = re.findall(r"uv venv[^\n]*", commands)
+    assert len(creates) >= 3, "each job needs its own environment"
+    for line in creates:
+        assert "--allow-existing" in line or "--clear" in line, (
+            f"setup-uv has already made a .venv, so this fails on 'already exists': {line}"
+        )
 
     # Downloads must name a version, never `latest`.
     for url in re.findall(r"https://github\.com/\S+/releases/\S+", workflow):

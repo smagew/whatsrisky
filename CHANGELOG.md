@@ -5,6 +5,13 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- `Makefile` with `check`, `test-all`, `selfscan` and `check-ci`. The last one replays the CI job
+  steps against a clean export of HEAD *with the runner's preconditions* — a uv-managed interpreter
+  and a `.venv` that setup-uv has already created — because both CI failures so far were about those
+  rather than about the commands.
+
 ### Fixed
 
 - A saved profile is what the next launch starts from. Saving one records it as active, the picker

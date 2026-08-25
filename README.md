@@ -299,9 +299,9 @@ Tool-native severities are mapped onto one scale (`whatsrisky/models.py`):
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-python -m pytest tests -q                        # unit + integration (integration skips without binaries)
-python -m pytest tests -q -m "not integration"   # unit only
-python -m pyflakes whatsrisky tests
+make check       # lint + unit tests + the self-scan gate
+make test-all    # adds the integration tests (needs semgrep, trivy, gitleaks)
+make check-ci    # replays the CI job steps against a clean export of HEAD
 ```
 
 The vulnerable sample project used by the integration tests is generated at test time

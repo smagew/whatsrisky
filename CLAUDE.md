@@ -14,14 +14,13 @@ practices is a bug unless the divergence is deliberate and written down.
 ## Commands
 
 ```bash
-uv venv && uv pip install -e ".[dev]"     # dev environment
-python -m pytest tests -q                 # unit + integration (integration skips without binaries)
-python -m pytest tests -q -m "not integration"
-python -m pyflakes whatsrisky tests       # lint
-whatsrisky . --fail-on high               # dogfood: this repo must stay clean
+uv venv && uv pip install -e ".[dev]"   # dev environment
+make check       # lint + unit tests + the self-scan gate
+make test-all    # adds the integration tests (needs the scanner binaries)
+make check-ci    # runs the CI job steps against a clean export of HEAD
 ```
 
-Run the whole suite, the lint, and the self-scan before every push.
+`make check` before every push, `make check-ci` before touching the workflow.
 
 ## Architecture
 
@@ -150,6 +149,11 @@ costs time.
   `Finding.__post_init__` and at each DOCX insertion point.
 - **gitleaks has no exclude flag.** Paths are excluded through a generated config
   with `[extend] useDefault = true` + `[[allowlists]] paths` (verified on 8.30.1).
+- **CI failures here have been about the runner, not the commands.** `uv pip
+  install --system` fails on the uv-managed interpreter setup-uv provides, and
+  `uv venv` fails because setup-uv has already created one — so every job needs
+  `--allow-existing` and `uv run`. `make check-ci` reproduces both preconditions
+  against a clean export; `tests/test_design.py` guards them.
 - **A stub server is how the API backends are tested.** `tests/test_ai.py` runs a
   local `ThreadingHTTPServer` speaking the chat-completions shape, so request
   construction, context injection and every error path are covered without a key.
