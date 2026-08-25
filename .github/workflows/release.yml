@@ -1,12 +1,22 @@
 name: Release
 
-# Tag vX.Y.Z on main and the binaries appear on the release. The version in the
-# tag must match cmd/whatsrisky/main.go, and the job refuses to publish if it does
-# not: a release whose binary reports a different version is worse than no release.
+# A merge to main with a bumped version releases itself. The alternative was a
+# human remembering to tag, which is how 0.3.1 shipped to main still calling
+# itself 0.3.0.
+#
+# One workflow does the whole thing on purpose: a tag pushed by GITHUB_TOKEN does
+# NOT trigger other workflows, so a tag-then-release split would need a personal
+# access token to work. This creates the tag and the release in the same job
+# instead, and nothing recursive is required.
 on:
   push:
-    tags: ["v*.*.*"]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      force:
+        description: "release even if this version already has a release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -23,36 +33,57 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: The tag and the source must agree
+      # Nothing to do on a merge that did not bump the version, which is most of
+      # them. This is the gate that makes "release on merge" safe.
+      - name: Is this version already released?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          source_version="$(make -s print-version)"
-          if [ "$tag" != "$source_version" ]; then
-            echo "tag $tag but cmd/whatsrisky/main.go says $source_version" >&2
-            exit 1
+          version="$(make -s print-version)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "forced; releasing $version"
+            echo "release=yes" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "releasing $tag"
-
-      - name: Test
-        run: go test ./... -short
-
-      - name: Build every platform
-        run: make build-all
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released; nothing to do"
+            echo "release=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version has no release yet"
+            echo "release=yes" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Release notes from the CHANGELOG
+        if: steps.check.outputs.release == 'yes'
         run: |
           make -s release-notes > notes.md
           if [ ! -s notes.md ]; then
-            echo "CHANGELOG.md has no section for this version" >&2
+            echo "CHANGELOG.md has no section for ${{ steps.check.outputs.version }}" >&2
             exit 1
           fi
           cat notes.md
 
-      - name: Publish
+      - name: Test
+        if: steps.check.outputs.release == 'yes'
+        run: go test ./... -short
+
+      - name: Build every platform
+        if: steps.check.outputs.release == 'yes'
+        run: make build-all
+
+      - name: Tag and publish
+        if: steps.check.outputs.release == 'yes'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          version="${{ steps.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$version" -m "$version" -F notes.md
+          git push origin "v$version"
+          gh release create "v$version" \
+            --title "v$version" \
             --notes-file notes.md \
             dist/*.tar.gz dist/checksums.txt
