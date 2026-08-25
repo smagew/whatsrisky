@@ -4,8 +4,12 @@
 VERSION := $(shell sed -n 's/^var Version = "\(.*\)"/\1/p' cmd/whatsrisky/main.go)
 LDFLAGS := -s -w -X main.Version=$(VERSION)
 PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64
+PREFIX ?= $(HOME)/.local/bin
 
-.PHONY: help check lint test test-all selfscan build build-all print-version release-notes live-ai clean
+# Every target here is a command, not a file. Without this, `make install` becomes a
+# no-op the moment a file named `install` exists next to it - which is exactly what
+# happened.
+.PHONY: help check lint test test-all selfscan build build-all install uninstall print-version release-notes live-ai clean
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t22
@@ -29,6 +33,18 @@ live-ai:  ## run the AI pass against the real claude CLI
 build:  ## build the binary into dist/
 	go build -ldflags '$(LDFLAGS)' -o dist/whatsrisky ./cmd/whatsrisky
 	@./dist/whatsrisky --version
+
+# The development install: build straight onto PATH, so the command is whatever is
+# checked out. Re-run it after switching branches - unlike a Python editable
+# install, a binary does not follow the source on its own.
+install:  ## build and put the binary on PATH (PREFIX=~/.local/bin)
+	@mkdir -p $(PREFIX)
+	go build -ldflags '$(LDFLAGS)' -o $(PREFIX)/whatsrisky ./cmd/whatsrisky
+	@echo "installed $$($(PREFIX)/whatsrisky --version) to $(PREFIX)/whatsrisky"
+	@case ":$$PATH:" in *":$(PREFIX):"*) ;; *) echo "note: $(PREFIX) is not on your PATH" ;; esac
+
+uninstall:  ## remove the installed binary
+	rm -f $(PREFIX)/whatsrisky
 
 # One binary per platform, which is the reason this is written in Go: the scanners
 # it orchestrates are installed with a single curl, and so is this.
