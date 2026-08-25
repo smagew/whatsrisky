@@ -20,6 +20,49 @@ permissions:
   contents: read
 
 jobs:
+  # The discipline no test can enforce: shipping code without bumping the version
+  # means the binary reports one thing and is another. 0.3.1 reached main calling
+  # itself 0.3.0 exactly this way.
+  version:
+    name: version was bumped
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Compare against the base branch
+        run: |
+          base="origin/${{ github.base_ref }}"
+          git fetch -q origin "${{ github.base_ref }}"
+
+          # Docs-only changes do not ship anything, so they need no bump.
+          if ! git diff --name-only "$base"...HEAD | grep -qE '^(cmd/|internal/|go\.(mod|sum)$|install\.sh$)'; then
+            echo "no shipped code changed; no bump needed"
+            exit 0
+          fi
+
+          mine="$(make -s print-version)"
+          # Braces, because a bare $base: is a parameter modifier in some shells and
+          # git then receives a mangled path.
+          theirs="$(git show "${base}:cmd/whatsrisky/main.go" | sed -n 's/^var Version = "\(.*\)"/\1/p')"
+          echo "base $theirs, this branch $mine"
+          # A guard that cannot read the base must not approve the change.
+          if [ -z "$theirs" ] || [ -z "$mine" ]; then
+            echo "::error::could not read the version (base '$theirs', branch '$mine')" >&2
+            exit 1
+          fi
+          if [ "$mine" = "$theirs" ]; then
+            echo "::error::this branch changes shipped code but leaves the version at $mine." \
+                 "Bump Version in cmd/whatsrisky/main.go and close a CHANGELOG section." >&2
+            exit 1
+          fi
+          if ! grep -q "^## \[$mine\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $mine" >&2
+            exit 1
+          fi
+          echo "version bumped to $mine and documented"
+
   unit:
     name: unit · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

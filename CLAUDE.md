@@ -122,16 +122,26 @@ For any non-trivial change, in order:
 
 ## Release
 
+Releases are automatic; the only manual part is the bump, and CI refuses a pull
+request without it.
+
 1. Bump `Version` in `cmd/whatsrisky/main.go` (semver: a report-schema change or a
    new pass is a minor, a fix is a patch).
 2. Rename the CHANGELOG's `[Unreleased]` heading to `[X.Y.Z] - YYYY-MM-DD` and open a
    fresh empty `[Unreleased]` above it.
-3. `make check` — the version tests check both.
-4. Merge, then tag `vX.Y.Z` on main; the release workflow cross-compiles, verifies
-   the tag against the source, and publishes the archives with checksums.
+3. `make check`.
+4. Merge. The release workflow sees a version with no release behind it, runs the
+   tests, cross-compiles, creates the tag and publishes the archives with
+   checksums. A merge that did not bump the version does nothing.
+
+Do the bump in the same pull request as the change. Merging first and bumping
+after is how 0.3.1 reached main still calling itself 0.3.0.
 
 ## Gotchas
 
+- **A tag pushed by `GITHUB_TOKEN` does not trigger other workflows.** GitHub
+  blocks that recursion, so a tag-then-release split would silently never release.
+  The release workflow creates the tag and publishes in one job for this reason.
 - **A terminal UI must be measured, not eyeballed.** The form drew 39 lines with
   nothing clamping it, so at 100x30 the whole Tuning section and the key bindings
   were off-screen — and the user reported it before any test did. The height tests

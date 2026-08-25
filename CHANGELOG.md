@@ -5,6 +5,8 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-25
+
 ### Fixed
 
 - The settings form fits the terminal. It drew 39 lines with nothing clamping them,
