@@ -333,6 +333,9 @@ class ClaudeRunner(Runner):
                     remediation=truncate(str(item.get("remediation") or ""), 2000),
                     confidence=str(item.get("confidence") or ""),
                     snippet=read_snippet(self.config.target, rel, line),
+                    provider="anthropic",
+                    model=self.config.claude_model,
+                    pass_name="full" if source == "full" else "review",
                     raw={"source": source},
                 )
             )

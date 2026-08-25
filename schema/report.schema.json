@@ -4,24 +4,55 @@
   "title": "whatsrisky report",
   "description": "Machine-readable output of a whatsrisky scan. Stable contract for other tools: bump schema_version on any breaking change.",
   "type": "object",
-  "required": ["schema_version", "generator", "project_path", "counts", "tools", "findings"],
+  "required": [
+    "schema_version",
+    "generator",
+    "project_path",
+    "counts",
+    "tools",
+    "findings"
+  ],
   "properties": {
-    "schema_version": { "type": "integer", "const": 1 },
+    "schema_version": {
+      "type": "integer",
+      "const": 2
+    },
     "generator": {
       "type": "object",
-      "required": ["name", "version"],
+      "required": [
+        "name",
+        "version"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "version": { "type": "string" }
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
       }
     },
-    "project_path": { "type": "string" },
-    "project_name": { "type": "string" },
-    "started_at": { "type": "string" },
-    "finished_at": { "type": "string" },
-    "duration_s": { "type": "number" },
-    "git_commit": { "type": "string" },
-    "git_branch": { "type": "string" },
+    "project_path": {
+      "type": "string"
+    },
+    "project_name": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "finished_at": {
+      "type": "string"
+    },
+    "duration_s": {
+      "type": "number"
+    },
+    "git_commit": {
+      "type": "string"
+    },
+    "git_branch": {
+      "type": "string"
+    },
     "diff_range": {
       "type": "string",
       "description": "Git range the scan was scoped to; empty means the whole project."
@@ -29,7 +60,9 @@
     "scope_paths": {
       "type": "array",
       "description": "Files the scan was limited to when diff_range is set.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "risk_score": {
       "type": "integer",
@@ -37,26 +70,70 @@
       "maximum": 100,
       "description": "Saturating weighted aggregate. Ranks projects; does not measure them."
     },
-    "verdict": { "type": "string" },
+    "verdict": {
+      "type": "string"
+    },
     "counts": {
       "type": "object",
-      "required": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
-      "additionalProperties": { "type": "integer", "minimum": 0 }
+      "required": [
+        "CRITICAL",
+        "HIGH",
+        "MEDIUM",
+        "LOW",
+        "INFO"
+      ],
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
     },
     "tools": {
       "type": "array",
       "description": "One entry per scanner. A status other than \"ok\" means that area is UNSCANNED, not clean.",
       "items": {
         "type": "object",
-        "required": ["name", "status", "findings"],
+        "required": [
+          "name",
+          "status",
+          "findings"
+        ],
         "properties": {
-          "name": { "type": "string", "enum": ["semgrep", "trivy", "gitleaks", "claude"] },
-          "status": { "type": "string", "enum": ["ok", "skipped", "error", "missing"] },
-          "version": { "type": "string" },
-          "command": { "type": "string" },
-          "duration_s": { "type": "number" },
-          "findings": { "type": "integer", "minimum": 0 },
-          "message": { "type": "string" }
+          "name": {
+            "type": "string",
+            "enum": [
+              "semgrep",
+              "trivy",
+              "gitleaks",
+              "claude"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "ok",
+              "skipped",
+              "error",
+              "missing"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "duration_s": {
+            "type": "number"
+          },
+          "findings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          }
         }
       }
     },
@@ -64,31 +141,293 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["tool", "severity", "title", "fingerprint"],
+        "required": [
+          "detector",
+          "severity",
+          "status",
+          "title",
+          "category",
+          "source",
+          "fingerprint"
+        ],
         "properties": {
-          "tool": { "type": "string" },
-          "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] },
-          "title": { "type": "string" },
-          "description": { "type": "string" },
-          "category": { "type": "string" },
-          "rule_id": { "type": "string" },
-          "file": { "type": "string" },
-          "line": { "type": ["integer", "null"] },
-          "end_line": { "type": ["integer", "null"] },
-          "cwe": { "type": "array", "items": { "type": "string" } },
-          "owasp": { "type": "array", "items": { "type": "string" } },
-          "references": { "type": "array", "items": { "type": "string" } },
-          "remediation": { "type": "string" },
-          "package": { "type": "string" },
-          "installed_version": { "type": "string" },
-          "fixed_version": { "type": "string" },
-          "confidence": { "type": "string" },
-          "snippet": { "type": "string" },
-          "cvss": { "type": "string" },
+          "tool": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "INFO"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Normalized category from a closed vocabulary, derived from CWE where available.",
+            "enum": [
+              "secret",
+              "injection",
+              "injection.sql",
+              "injection.command",
+              "injection.code",
+              "xss",
+              "path-traversal",
+              "deserialization",
+              "ssrf",
+              "xxe",
+              "access-control",
+              "authentication",
+              "crypto",
+              "dependency",
+              "misconfiguration",
+              "supply-chain",
+              "dos",
+              "info-disclosure",
+              "input-validation",
+              "race",
+              "memory",
+              "logging",
+              "other"
+            ]
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "end_line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cwe": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "owasp": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remediation": {
+            "type": "string"
+          },
+          "package": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": "string"
+          },
+          "fixed_version": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "cvss": {
+            "type": "string"
+          },
           "fingerprint": {
             "type": "string",
             "description": "Stable id for this finding; suitable as a suppression/baseline key."
+          },
+          "detector": {
+            "type": "object",
+            "description": "Who found it. provider and model are null for local scanners; they carry the AI backend and model otherwise.",
+            "required": [
+              "tool"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string",
+                "enum": [
+                  "semgrep",
+                  "trivy",
+                  "gitleaks",
+                  "claude"
+                ]
+              },
+              "provider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pass": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Which pass produced it: code | vuln | misconfig | secret | dir | git | full | review."
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "open",
+              "resolved",
+              "reintroduced",
+              "accepted"
+            ],
+            "description": "Relative to the baseline scan. Resolved findings are carried into the report for one generation so they can be shown."
+          },
+          "category_label": {
+            "type": "string",
+            "description": "Human-readable name of the category."
+          },
+          "scanner_category": {
+            "type": "string",
+            "description": "The scanner's own words, kept for traceability."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "source-code",
+              "dependency-manifest",
+              "git-history",
+              "iac",
+              "container",
+              "ci-config"
+            ],
+            "description": "The kind of artifact the finding lives in."
+          },
+          "content_key": {
+            "type": "string",
+            "description": "Identity keyed on the evidence: survives the code moving between lines or files."
+          },
+          "match_key": {
+            "type": "string",
+            "description": "Identity without the line: survives a line drifting inside a file."
+          },
+          "first_seen": {
+            "type": "string",
+            "description": "scan_id of the scan that first reported it."
+          },
+          "last_seen": {
+            "type": "string",
+            "description": "scan_id of the most recent scan that reported it."
+          },
+          "moved_from": {
+            "type": "string",
+            "description": "Previous location, when the finding was tracked through moved code."
           }
+        }
+      }
+    },
+    "scan_id": {
+      "type": "string",
+      "description": "Identifier of this scan; the baseline of a later one refers to it."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "complete",
+        "partial"
+      ],
+      "description": "'running' while the scan is in progress - the artifact is written from the first second so a viewer can open it mid-scan. 'partial' means a scanner errored."
+    },
+    "total_findings": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "active_findings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Findings that still count: new, open, reintroduced. counts/risk_score/verdict are over these only."
+    },
+    "excludes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "excluded_findings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Dropped by exclusions. Counted, never hidden."
+    },
+    "counts_by_category": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "counts_by_source": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "counts_by_status": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "comparison": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Result of correlating against the baseline report. Null when there was none.",
+      "properties": {
+        "baseline_path": {
+          "type": "string"
+        },
+        "baseline_scan_id": {
+          "type": "string"
+        },
+        "baseline_at": {
+          "type": "string"
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "moved": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Findings tracked through moved code, so a refactor is not reported as a fix plus a regression."
         }
       }
     }

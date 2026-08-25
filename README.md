@@ -108,6 +108,41 @@ That last line is real: the AI pass runs with `--output-format stream-json`, so 
 the reviewer is opening instead of watching a spinner for four minutes. On a non-terminal (CI, pipes)
 the same information is printed as plain lines.
 
+### Rescans: what did we fix?
+
+A second scan compares itself against the previous report in the output directory
+and gives every finding a status:
+
+```
+vs myapp-20260824-231344: 3 new  ·  18 open  ·  5 resolved  ·  1 reintroduced  ·  2 moved
+```
+
+- **resolved** findings are carried into the new report, so "we fixed five things" is
+  visible rather than inferred from a shrinking total.
+- **moved** means a finding was tracked through code that changed place. A finding is
+  identified by three keys — its exact location, then the evidence itself, then its
+  location without the line — so moving a function to another file keeps its history
+  instead of reporting a fix plus a regression.
+- **reintroduced** is a finding that was fixed and came back.
+- resolved and accepted findings never inflate the counts, the risk score, the verdict
+  or the exit code. They are history and decisions, not open work.
+
+```bash
+whatsrisky ~/www/app                          # compares against the latest report automatically
+whatsrisky ~/www/app --baseline old.json      # compare against a specific one
+whatsrisky ~/www/app --no-compare             # don't
+```
+
+### Grouping axes
+
+Every finding carries a normalized `category` from a closed vocabulary
+(`injection.sql`, `secret`, `path-traversal`, `crypto`, `dependency`,
+`misconfiguration`, …), derived from its CWE where it has one, and a `source`
+(`source-code`, `dependency-manifest`, `git-history`, `iac`, `container`,
+`ci-config`). `detector` records who found it — tool, and for the AI pass the
+provider and model. So the same findings can be read by severity, by kind of
+problem, by where they live, or by which scanner produced them.
+
 ### Flags that matter
 
 - `--ai` — add the Claude pass. Naming `--model` or `--claude-mode` implies it.
@@ -120,6 +155,7 @@ the same information is printed as plain lines.
 - `--exclude legacy --exclude '*.min.js'` — repeatable; `--no-default-excludes` to keep vendored
   code in scope; `--show-excludes` to print the effective list.
 - `--offline` — no network; Trivy skips its DB update and Semgrep falls back to `p/security-audit`.
+- `--baseline FILE` / `--no-compare` — control the rescan comparison.
 - `--quiet` / `--json-stdout` — machine-readable output, see **Embedding** below.
 
 ## The report
@@ -160,8 +196,12 @@ whatsrisky /srv/app --diff main...HEAD --json-stdout > findings.json
 ```
 
 The shape is a versioned contract: [`schema/report.schema.json`](schema/report.schema.json).
-`schema_version` is bumped on any breaking change, and every finding carries a stable `fingerprint`
-suitable as a suppression key.
+`schema_version` is bumped on any breaking change, and every finding carries stable identity keys
+suitable as suppression or correlation keys.
+
+The JSON is also written **while the scan runs**: it exists within a second of starting, carries
+`status: "running"` and per-scanner `pending`/`running` states, and is rewritten atomically after
+each scanner finishes. A viewer can open it mid-scan instead of waiting for the last tool.
 
 ## Honesty notes
 
@@ -209,6 +249,8 @@ secret scanners or GitHub push protection.
 - `whatsrisky/report/` — DOCX and Markdown writers.
 - `whatsrisky/ui.py` — Textual settings + progress UI. `whatsrisky/settings.py` — persisted profiles.
 - `whatsrisky/progress.py` — one progress model, rendered by both the CLI and the UI.
+- `whatsrisky/categories.py` — CWE → normalized category. `whatsrisky/compare.py` — rescan
+  correlation (what was fixed, what moved, what came back).
 - `schema/report.schema.json` — the JSON contract for other tools.
 
 ## License

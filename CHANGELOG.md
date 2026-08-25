@@ -7,6 +7,22 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- Rescan comparison (`schema_version: 2`). A scan correlates itself against the previous report and
+  labels every finding `new`, `open`, `resolved`, `reintroduced` or `accepted`. Resolved findings are
+  carried into the report for one generation, because showing them is the point. Three identity keys
+  — exact location, the evidence itself, the location without the line — mean code that moves keeps
+  its history instead of being reported as a fix plus a regression. `--baseline`, `--no-compare`, and
+  automatic discovery of the latest report otherwise.
+- Grouping axes on every finding: a normalized `category` from a closed vocabulary derived from CWE,
+  a `source` (source code, dependency manifest, git history, IaC, container, CI config), and a
+  `detector` object recording tool, provider, model and pass — so "who found it" is a real axis and
+  another AI provider is a seam rather than a rewrite.
+- The JSON report is written from the first second of a scan and rewritten atomically after each
+  scanner, with `status: running` and per-scanner `pending`/`running`, so a viewer can open it
+  mid-scan.
+- Resolved and accepted findings are excluded from the counts, the risk score, the verdict and the
+  exit code — history and decisions are not open work — and get their own section in the DOCX.
+
 - Default skip list for vendored, generated and build directories, with `--exclude`,
   `--no-default-excludes` and `--show-excludes`. Exclusions now reach every scanner: gitleaks gets a
   generated allowlist config (it has no exclude flag), the AI pass is told which paths to ignore, and

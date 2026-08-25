@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from .compare import correlate, find_baseline, load_report
 from .models import SEVERITY_ORDER, ScanReport, Severity, ToolResult
 from .report import write_docx, write_markdown
 from .runners import ALL_RUNNERS, ScanConfig
@@ -82,6 +83,8 @@ class ScanOptions:
     work_dir: str = ""
     keep_work: bool = False
     open_report: bool = False
+    baseline: str = ""        # report to compare against; "" = the latest in out_dir
+    compare: bool = True
 
     def normalized(self) -> "ScanOptions":
         """Resolve the combinations that cannot work as configured."""
@@ -160,6 +163,10 @@ class ScanOptions:
             parts += ["--max-per-severity", str(self.max_per_severity)]
         if self.fail_on != "none":
             parts += ["--fail-on", self.fail_on]
+        if self.baseline:
+            parts += ["--baseline", self.baseline]
+        if not self.compare:
+            parts.append("--no-compare")
         if self.keep_work:
             parts.append("--keep-work")
         if self.open_report:
@@ -185,6 +192,30 @@ def probe_tools() -> list[dict]:
             }
         )
     return out
+
+
+class _LiveWriter:
+    """Rewrites the machine-readable artifacts while the scan runs.
+
+    JSON is cheap and a viewer can reload it, so it is refreshed on every tool
+    transition. DOCX is written once at the end: it is the deliverable, not the
+    working view.
+    """
+
+    def __init__(self, report: ScanReport, out_dir: Path, base: str, formats: list[str]):
+        self.report = report
+        self.path = out_dir / f"{base}.json" if "json" in formats else None
+
+    def write(self) -> None:
+        if self.path is None:
+            return
+        try:
+            payload = json.dumps(self.report.to_dict(), indent=2, ensure_ascii=False)
+            temporary = self.path.with_suffix(".json.part")
+            temporary.write_text(payload, encoding="utf-8")
+            temporary.replace(self.path)  # atomic: a reader never sees half a report
+        except OSError:
+            pass
 
 
 @dataclass
@@ -407,6 +438,7 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
     report = ScanReport(
         project_path=str(target),
         project_name=target.name,
+        scan_id=base,
         started_at=stamp.strftime("%Y-%m-%d %H:%M:%S"),
         git_commit=commit,
         git_branch=branch,
@@ -423,10 +455,40 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
         },
     )
 
+    # The baseline is picked before we write anything, so this run's own report can
+    # never become its own baseline.
+    baseline_data: dict | None = None
+    baseline_path = ""
+    if options.compare:
+        if options.baseline:
+            candidate = Path(options.baseline).expanduser()
+            baseline_data = load_report(candidate)
+            if baseline_data is None:
+                raise ValueError(f"not a whatsrisky report: {candidate}")
+            baseline_path = str(candidate)
+        else:
+            found = find_baseline(out_dir)
+            if found is not None:
+                baseline_data = load_report(found)
+                baseline_path = str(found)
+
+    # A report exists from the first second, so a viewer can open it mid-scan.
+    report.status = "running"
+    for name in options.tools:
+        report.tools.append(ToolResult(name=name, status="pending"))
+    live = _LiveWriter(report, out_dir, base, options.formats)
+    live.write()
+
+    def relay(kind: str, payload: dict) -> None:
+        on_event(kind, payload)
+        if kind in ("tool_start", "tool_done"):
+            live.write()
+
     started = time.monotonic()
-    report.tools = _run_tools(options.tools, config, options.jobs, on_event)
+    report.tools = _run_tools(options.tools, config, options.jobs, relay)
     report.duration_s = time.monotonic() - started
     report.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    report.status = "partial" if any(not tool.ok for tool in report.tools) else "complete"
 
     floor = Severity.parse(options.min_severity, Severity.INFO)
     seen: set[str] = set()
@@ -443,6 +505,9 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
             report.findings.append(finding)
     report.excludes = excludes
 
+    if baseline_data is not None:
+        correlate(report, baseline_data, baseline_path)
+
     written: list[Path] = []
     if "docx" in options.formats:
         path = Path(options.out).expanduser().resolve() if options.out else out_dir / f"{base}.docx"
@@ -450,9 +515,8 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
     if "md" in options.formats:
         written.append(write_markdown(report, out_dir / f"{base}.md"))
     if "json" in options.formats:
-        json_path = out_dir / f"{base}.json"
-        json_path.write_text(json.dumps(report.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
-        written.append(json_path)
+        live.write()
+        written.append(out_dir / f"{base}.json")
     on_event("report", {"paths": [str(p) for p in written]})
 
     if not options.keep_work and work_dir.name.startswith(".work-"):

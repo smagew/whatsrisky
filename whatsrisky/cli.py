@@ -107,6 +107,7 @@ def _options_from_args(args: argparse.Namespace) -> ScanOptions:
         ("max_per_severity", args.max_per_severity),
         ("fail_on", args.fail_on),
         ("diff", args.diff),
+        ("baseline", args.baseline),
     ):
         if value is not None:
             setattr(options, name, value)
@@ -118,6 +119,8 @@ def _options_from_args(args: argparse.Namespace) -> ScanOptions:
         options.offline = True
     if args.no_default_excludes:
         options.use_default_excludes = False
+    if args.no_compare:
+        options.compare = False
     if args.keep_work:
         options.keep_work = True
     if args.open:
@@ -265,6 +268,21 @@ def cmd_scan(args: argparse.Namespace) -> int:
     else:
         console.print()
         console.print(_summary_table(outcome.report))
+        comparison = outcome.report.comparison
+        if comparison:
+            counts = comparison["counts"]
+            bits = [
+                f"[red]{counts.get('new', 0)} new[/]",
+                f"{counts.get('open', 0)} open",
+                f"[green]{counts.get('resolved', 0)} resolved[/]",
+            ]
+            if counts.get("reintroduced"):
+                bits.append(f"[yellow]{counts['reintroduced']} reintroduced[/]")
+            if comparison.get("moved"):
+                bits.append(f"[dim]{comparison['moved']} moved[/]")
+            console.print(
+                "vs " + (comparison["baseline_scan_id"] or "baseline") + ": " + "  ·  ".join(bits)
+            )
         for tool in (t for t in outcome.report.tools if not t.ok):
             console.print(
                 f"[{STATUS_STYLE.get(tool.status, 'yellow')}]! {tool.name} {tool.status}[/]: "
@@ -382,6 +400,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scan.add_argument("--profile", help="start from a saved profile, then apply the flags below it")
     scan.add_argument("--save-profile", help="store these settings under this profile name")
+    scan.add_argument(
+        "--baseline",
+        help="report to compare against (default: the most recent one in the output directory)",
+    )
+    scan.add_argument(
+        "--no-compare", action="store_true", help="do not compare against a previous report"
+    )
     scan.add_argument("--work-dir", help="where to keep raw scanner output")
     scan.add_argument("--keep-work", action="store_true", help="do not delete raw scanner output")
     scan.add_argument("--open", action="store_true", help="open the DOCX when done")

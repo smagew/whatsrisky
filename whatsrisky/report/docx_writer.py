@@ -414,7 +414,8 @@ def _findings(doc, report: ScanReport, max_per_severity: int | None) -> None:
 
     grouped: dict[Severity, list[Finding]] = {s: [] for s in SEVERITY_ORDER}
     for finding in report.sorted_findings():
-        grouped[finding.severity].append(finding)
+        if finding.is_active:  # resolved and accepted findings get their own section
+            grouped[finding.severity].append(finding)
 
     for severity in SEVERITY_ORDER:
         items = grouped[severity]
@@ -443,6 +444,45 @@ def _findings(doc, report: ScanReport, max_per_severity: int | None) -> None:
             run.font.size = Pt(9)
 
 
+def _comparison(doc, report: ScanReport) -> None:
+    """What changed since the previous scan - the reason to run it twice."""
+    comparison = report.comparison
+    if not comparison:
+        return
+    counts = comparison.get("counts") or {}
+    doc.add_heading("4. Since the previous scan", level=1)
+    doc.add_paragraph(
+        f"Compared against scan {comparison.get('baseline_scan_id') or 'unknown'} "
+        f"({comparison.get('baseline_at') or 'unknown date'})."
+    )
+    table = _table(doc, ["Change", "Count", "Meaning"], [1.3, 0.7, 4.4])
+    rows = [
+        ("New", counts.get("new", 0), "Not present in the previous scan."),
+        ("Open", counts.get("open", 0), "Present in both scans; still to fix."),
+        ("Resolved", counts.get("resolved", 0), "Was present, is gone. Excluded from the counts above."),
+        ("Reintroduced", counts.get("reintroduced", 0), "Was fixed, and is back."),
+        ("Accepted", counts.get("accepted", 0), "A decision to live with it; excluded from the counts."),
+    ]
+    for label, count, meaning in rows:
+        row = _fill_row(table, [label, str(count), meaning], widths=[1.3, 0.7, 4.4])
+        row.cells[0].paragraphs[0].runs[0].bold = True
+    if comparison.get("moved"):
+        doc.add_paragraph(
+            f"{comparison['moved']} finding(s) were tracked through moved code, so a refactor "
+            "does not read as a fix plus a regression."
+        )
+
+    history = [f for f in report.sorted_findings() if not f.is_active]
+    if history:
+        doc.add_heading("Resolved and accepted", level=2)
+        for finding in history:
+            para = doc.add_paragraph(style="List Bullet")
+            para.paragraph_format.space_after = Pt(2)
+            run = para.add_run(f"[{finding.status.upper()}] ")
+            run.bold = True
+            para.add_run(clean_text(f"{finding.title} — {finding.location} ({finding.tool})"))
+
+
 def _appendix(doc, report: ScanReport) -> None:
     ai_notes = [t for t in report.tools if t.name == "claude" and t.ok and t.message]
     diagnostics = [t for t in report.tools if t.stderr_tail or t.status in ("error", "missing")]
@@ -468,6 +508,7 @@ def write_docx(report: ScanReport, out_path: Path, max_per_severity: int | None 
     _executive_summary(doc, report)
     _scope(doc, report)
     _findings(doc, report, max_per_severity)
+    _comparison(doc, report)
     _appendix(doc, report)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
