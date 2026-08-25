@@ -294,3 +294,38 @@ def test_run_streaming_reports_lines(tmp_path):
     assert res.timed_out and res.returncode == 124
 
     assert run_streaming(["definitely-not-a-real-binary-xyz"]).returncode == 127
+
+
+def test_leaving_the_settings_screen_mid_probe_does_not_crash(tmp_path, monkeypatch):
+    """The scanner probe and the directory scan run in threads and can land late."""
+    import asyncio
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from whatsrisky.core import ScanOptions
+    from whatsrisky.ui import SettingsScreen, WhatsriskyApp
+
+    async def drive():
+        app = WhatsriskyApp(ScanOptions(path=str(tmp_path)))
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, SettingsScreen)
+            # Simulate the callbacks arriving after the widgets are gone.
+            for widget in screen.query("#tools-panel, #skip-dirs"):
+                widget.remove()
+            await pilot.pause()
+            screen._show_tools([{"name": "semgrep", "found": False, "hint": "install it", "version": ""}])
+            screen._show_dirs([("src", 3, False)])
+            await pilot.pause()
+
+    asyncio.run(drive())
+
+
+def test_a_healthy_tool_reports_no_install_hint():
+    from whatsrisky.core import probe_tools
+
+    for tool in probe_tools():
+        if tool["found"]:
+            assert tool["hint"] == "", f"{tool['name']} is present but carries a failure reason"
+        else:
+            assert tool["hint"], f"{tool['name']} is missing but says nothing about why"

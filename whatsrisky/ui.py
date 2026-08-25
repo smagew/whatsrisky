@@ -13,6 +13,7 @@ from pathlib import Path
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import (
     Button,
@@ -43,7 +44,7 @@ from .core import (
     run_scan,
     validate,
 )
-from .models import SEVERITY_ORDER
+from .models import SCHEMA_VERSION, SEVERITY_ORDER
 from .progress import ProgressModel
 from .util import path_excluded
 
@@ -386,6 +387,10 @@ class SettingsScreen(Screen):
                     yield Button("Delete", id="delete-profile")
                 yield Rule()
                 yield Button("▶  Run scan", id="run", variant="success")
+                yield Static(
+                    f"[dim]whatsrisky {__version__} · report schema {SCHEMA_VERSION}[/]",
+                    id="version",
+                )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -399,6 +404,13 @@ class SettingsScreen(Screen):
     @on(Checkbox.Changed, "#use-default-excludes")
     def _path_changed(self) -> None:
         self.scan_dirs()
+
+    def _panel(self, selector: str) -> Static | None:
+        """A widget, or None when this screen is no longer mounted."""
+        try:
+            return self.query_one(selector, Static)
+        except NoMatches:
+            return None
 
     # --- directory picker ---------------------------------------------
     def _picked_dirs(self) -> list[str]:
@@ -439,7 +451,10 @@ class SettingsScreen(Screen):
         self.app.call_from_thread(self._show_dirs, entries)
 
     def _show_dirs(self, entries: list[tuple[str, int, bool]]) -> None:
-        widget = self.query_one("#skip-dirs", SelectionList)
+        try:
+            widget = self.query_one("#skip-dirs", SelectionList)
+        except NoMatches:
+            return  # the screen went away while the directories were being counted
         widget.clear_options()
         if not entries:
             widget.display = False
@@ -458,6 +473,11 @@ class SettingsScreen(Screen):
         self.app.call_from_thread(self._show_tools, tools)
 
     def _show_tools(self, tools: list[dict]) -> None:
+        # A background probe can land after the user has moved on. Textual tears the
+        # widgets down with the screen, so this must be a no-op, not a crash.
+        panel = self._panel("#tools-panel")
+        if panel is None:
+            return
         lines = ["[b]Scanners on this machine[/]"]
         for tool in tools:
             if tool["found"]:
@@ -469,7 +489,7 @@ class SettingsScreen(Screen):
         if any(not t["found"] for t in tools):
             lines.append("")
             lines.append("[yellow]missing → `whatsrisky doctor --install`[/]")
-        self.query_one("#tools-panel", Static).update("\n".join(lines))
+        panel.update("\n".join(lines))
 
     # --- form <-> options ---------------------------------------------
     def _int(self, widget_id: str, default: int) -> int:
@@ -643,7 +663,7 @@ class SettingsScreen(Screen):
 # ----------------------------------------------------------------------
 class WhatsriskyApp(App):
     TITLE = "whatsrisky"
-    SUB_TITLE = "security scan settings"
+    SUB_TITLE = f"{__version__} · security scan settings"
     CSS = """
     #main { height: 1fr; }
     #form { width: 2fr; padding: 0 2 1 2; }
@@ -659,6 +679,7 @@ class WhatsriskyApp(App):
     Select { margin: 0; }
     Rule { margin: 0; }
     #tools-panel, #cmd-panel, #problems-panel { padding: 0; }
+    #version { padding: 1 0 0 0; }
     #cmd-panel { color: $text-accent; }
     #run { width: 100%; margin-top: 1; }
     #side Button { width: 1fr; }

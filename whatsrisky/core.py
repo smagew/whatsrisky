@@ -198,7 +198,13 @@ def probe_tools() -> list[dict]:
                 "binary": runner.binary,
                 "found": found,
                 "version": runner.version() if found else "",
-                "hint": runner.install_hint if runner.binary else runner.unavailable_reason(),
+                # Only ask why when it is actually missing: probing a healthy backend
+                # for a failure reason produces a misleading string.
+                "hint": (
+                    ""
+                    if found
+                    else (runner.install_hint if runner.binary else runner.unavailable_reason())
+                ),
                 "covers": TOOL_COVERAGE.get(name, ""),
             }
         )

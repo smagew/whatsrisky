@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -21,6 +22,22 @@ ENV_KEY = "OPENAI_API_KEY"
 ENV_BASE = "OPENAI_BASE_URL"
 
 
+def _validated_base_url(raw: str) -> str:
+    """Only http(s) endpoints.
+
+    `urlopen` handles `file://` and `ftp://` too, so an unchecked OPENAI_BASE_URL
+    turns an environment variable into arbitrary scheme handling - "point it at a
+    compatible endpoint" must not mean "read a local file".
+    """
+    url = (raw or "").strip().rstrip("/")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(
+            f"{ENV_BASE} must be an http(s) URL with a host; got {raw!r}"
+        )
+    return url
+
+
 class OpenAiBackend:
     name = "openai"
     agentic = False
@@ -29,7 +46,7 @@ class OpenAiBackend:
     def __init__(self, cwd: Path, work_dir: Path):
         self.cwd = cwd
         self.work_dir = work_dir
-        self.base_url = (os.environ.get(ENV_BASE) or DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = _validated_base_url(os.environ.get(ENV_BASE) or DEFAULT_BASE_URL)
 
     def available(self) -> tuple[bool, str]:
         if os.environ.get(ENV_KEY):
@@ -77,7 +94,9 @@ class OpenAiBackend:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed https endpoint
+            # The scheme and host come from _validated_base_url; the path is a literal.
+            # nosemgrep: dynamic-urllib-use-detected
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 payload = json.loads(response.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as exc:
             detail = truncate(exc.read().decode("utf-8", "replace"), 400)

@@ -5,6 +5,8 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-25
+
 ### Added
 
 - The AI pass is provider-neutral (`schema_version: 3`). `whatsrisky/ai/` holds the backends and
@@ -70,6 +72,9 @@ All notable changes to this project are documented here. This project follows
   `misconfiguration` instead of `other`. On the fixture project `other` went from 2% to 0%.
 - A scan no longer discovers its own reports. Output directories are marked, so a second run does not
   re-report the secrets quoted in the first run's report.
+- `OPENAI_BASE_URL` is validated as an http(s) URL with a host. `urlopen` speaks `file://` too, so an
+  unchecked environment variable turned "point it at a compatible endpoint" into reading a local
+  file. Found by scanning ourselves.
 
 ## [0.1.0] - 2026-08-24
 

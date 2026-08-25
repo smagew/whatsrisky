@@ -104,6 +104,12 @@ For any non-trivial change, in order:
   widget, and the `command_line()` case together. A setting that exists in only
   one front end is a bug: the UI's "equivalent command" panel is what keeps the
   CLI and the UI honest.
+- **Two independent versions, both contracts.** `whatsrisky/__init__.py` holds the
+  package version and nothing else does — `pyproject.toml` reads it through
+  `[tool.hatch.version]`, so a wheel cannot disagree with the reports it writes.
+  `SCHEMA_VERSION` in `models.py` versions the JSON report and moves on its own
+  schedule. A change that ships bumps the package version and closes a CHANGELOG
+  section in the same PR; `tests/test_version.py` fails when either is missing.
 - **JSON changes bump `SCHEMA_VERSION`.** Other tools consume the report;
   `schema/report.schema.json` is a contract, not documentation.
 - **Design system** (when a viewer exists): the same rules as whydiff, because the
@@ -118,6 +124,15 @@ For any non-trivial change, in order:
 - **Branching.** Trunk-based: short branches named by intent (`feat/…`, `fix/…`,
   `chore/…`), one PR each, deleted after merge. Conventional commit subjects
   (`feat(core):`, `fix(ui):`, `chore(release):`).
+
+## Release
+
+1. Bump `__version__` in `whatsrisky/__init__.py` (semver: a report-schema change or
+   a new pass is a minor, a fix is a patch).
+2. Rename the CHANGELOG's `[Unreleased]` heading to `[X.Y.Z] - YYYY-MM-DD` and open a
+   fresh empty `[Unreleased]` above it.
+3. `python -m pytest tests -q` — the version tests check both.
+4. Merge, then tag `vX.Y.Z` on main.
 
 ## Gotchas
 
@@ -142,4 +157,7 @@ costs time.
 - **`semgrep --config auto` needs the network and metrics.** With `--offline` it
   falls back to `p/security-audit`; `--metrics off` breaks `auto`.
 - **Semgrep suppressions anchor on the call site**, not on the flagged argument's
-  line: `# nosemgrep: rule-id` goes on the line the finding reports.
+  line: `# nosemgrep: rule-id` goes on the line the finding reports. It must also be
+  the line *immediately* before it — a two-line comment pushes the marker out of
+  range and the suppression silently does nothing. Put the reason on the first
+  line and `# nosemgrep: rule-id` alone on the last.

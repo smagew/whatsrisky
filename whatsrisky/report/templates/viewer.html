@@ -346,6 +346,7 @@ function renderHeader() {
     ["scope", R.diff_range ? R.diff_range + " (" + (R.scope_paths || []).length + " files)" : "whole project"],
     ["started", R.started_at],
     ["took", R.duration_s ? R.duration_s + "s" : ""],
+    ["whatsrisky", R.generator ? R.generator.version : ""],
   ];
   bits.forEach(([k, v]) => {
     if (!v) return;
