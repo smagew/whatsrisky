@@ -9,7 +9,7 @@ Four scanners, one severity scale, one document:
 | **Semgrep** | First-party source code (SAST) |
 | **Trivy** | Dependency CVEs, IaC / container misconfiguration, optionally secrets |
 | **gitleaks** | Hardcoded secrets in the working tree *and* in git history |
-| **Claude Code** | LLM review of logic, authn/authz and data flow — whole-project audit or the branch diff |
+| **An LLM** | Review of logic, authn/authz and data flow — whole-project audit or the branch diff |
 
 The report is the point. Not a wall of tool output: a view that says what to fix first, why it is
 exploitable, where it is, what changed since last time, and — the part scanners usually hide —
@@ -32,15 +32,15 @@ uv tool install --editable .
 ```
 
 The three scanners are separate binaries (`semgrep`, `trivy`, `gitleaks`) — `doctor` tells you what
-is missing and how to get it on your platform. The Claude pass additionally needs the `claude` CLI
-(`npm i -g @anthropic-ai/claude-code`) and is **off by default**: it spends tokens on your account.
+is missing and how to get it on your platform. The AI pass is **off by default**: it spends tokens on
+your account and sends code to a third party.
 
 ## Use
 
 ```bash
 whatsrisky ~/www/app                      # semgrep + trivy + gitleaks, reports in ./whatsrisky-reports
 whatsrisky ~/www/app --open               # …and open the report when it is done
-whatsrisky ~/www/app --ai                 # add the Claude review pass (costs tokens)
+whatsrisky ~/www/app --ai                 # add the AI review pass (costs tokens)
 whatsrisky ~/www/app --diff HEAD~1..HEAD  # only what this range changed
 whatsrisky ~/www/app --exclude legacy --exclude '*.generated.py'
 whatsrisky ~/www/app --min-severity HIGH --open
@@ -169,11 +169,42 @@ class, then unambiguous tokens in the rule id, then the artifact, then CWE, then
 Rule ids outrank CWE deliberately — semgrep tags its own `injection.tainted-sql-string` rule with
 CWE-915, which would file a SQL injection under deserialization.
 
+### The AI pass, and who runs the model
+
+`--ai` adds an LLM reviewer that reads logic the pattern scanners cannot: authorization holes,
+data flow across files, business rules. It is off by default and it is never implicit.
+
+Two backends today, and the difference is not cosmetic:
+
+| `--ai-provider` | Sees | Can review a diff |
+| --- | --- | --- |
+| `claude-cli` (default) | **explores the repository itself** with read tools | yes, via the `security-review` skill |
+| `openai` | only the files we send it, within `--ai-context-bytes` | no — it has no access to git |
+
+An agentic backend decides what to open and follows a taint through the codebase; an API backend is
+handed a slice we chose. Those are different analyses of different strength, so the report records
+which one ran — `openai · gpt-5 · was given a fixed context … saw 14 file(s)` — instead of
+presenting them as equivalent. `detector` on every finding carries the provider and the model.
+
+```bash
+export OPENAI_API_KEY=…
+whatsrisky ~/www/app --ai-provider openai --model gpt-5
+whatsrisky ~/www/app --ai --model sonnet          # claude-cli, cheaper model
+whatsrisky ~/www/app --ai --ai-mode review        # the branch diff (agentic backends only)
+```
+
+When an API backend cannot do something, it says so rather than returning a confident empty result:
+asking `openai` for `--ai-mode review` fails with "it has no access to git — use `--ai-mode full`,
+or `--ai-provider claude-cli`".
+
 ### Flags that matter
 
-- `--ai` — add the Claude pass. Naming `--model` or `--claude-mode` implies it.
-- `--model opus|sonnet|haiku|<model-id>` — default `opus`. `sonnet` is several times cheaper.
-- `--claude-mode full|review|both` — audit the whole project, review the diff, or both.
+- `--ai` — add the AI pass. Naming `--ai-provider`, `--model` or `--ai-mode` implies it.
+- `--ai-provider claude-cli|openai` — who runs the model. Keys come from the environment
+  (`OPENAI_API_KEY`, and `OPENAI_BASE_URL` to point at a compatible endpoint).
+- `--model <id>` — free-form; blank means the backend's own default.
+- `--ai-mode full|review|both` — audit the whole project, review the diff, or both.
+- `--ai-context-bytes N` — how much source a non-agentic backend is shown (default 240000).
 - `--diff HEAD~1..HEAD` — scope to a git range (see the honesty note below).
 - `--tools semgrep,trivy` / `--skip gitleaks` — pick scanners.
 - `--min-severity HIGH`, `--max-per-severity 25` — trim the document (JSON keeps everything).
@@ -273,6 +304,8 @@ secret scanners or GitHub push protection.
 
 - `whatsrisky/core.py` — `ScanOptions`, `run_scan()`, tool probing. No terminal, no UI.
 - `whatsrisky/runners/` — one module per scanner, each returning normalized `Finding` objects.
+  `runners/ai.py` owns the prompts and the JSON contract with the model; `whatsrisky/ai/` owns who
+  runs it (`claude_cli.py`, `openai_api.py`, and `context.py` for backends that cannot read the repo).
 - `whatsrisky/report/` — HTML, DOCX and Markdown writers. `templates/viewer.html` is the whole
   viewer in one file (CSS + JS), with the report JSON inlined at write time.
 - `whatsrisky/ui.py` — Textual settings + progress UI. `whatsrisky/settings.py` — persisted profiles.

@@ -1,6 +1,6 @@
 # Report format and viewer — specification
 
-Status: **sections 1-3 built** (see the checklists below). Sections 4-5 are still proposed.
+Status: **sections 1-4 built** (see the checklists below); section 4 is partial, see its note. Section 5 is still proposed.
 
 ## Why a format at all
 
@@ -190,12 +190,14 @@ in a chip that reveals them.
 - [x] "Open DOCX" stays disabled until the DOCX is actually written, and says why.
 
 ### 4. Provider abstraction
-- [ ] `--ai-provider claude-cli|anthropic|openai|google`, `--model` free-form.
-- [ ] `claude-cli` behaviour is unchanged from today, tests included.
-- [ ] One API backend implemented end to end, with keys from the environment and a
+- [~] `--ai-provider`, `--model` free-form — **partial**: `claude-cli` and `openai` are
+      implemented. A direct `anthropic` API backend and `google` are not; the seam is in place
+      (`whatsrisky/ai/`, one class each) but neither has been written or tested.
+- [x] `claude-cli` behaviour is unchanged from today, tests included.
+- [x] One API backend implemented end to end, with keys from the environment and a
       clear error when absent.
-- [ ] `detector` records provider and model for every AI finding.
-- [ ] The report states which backend explored the repository and which was handed
+- [x] `detector` records provider and model for every AI finding.
+- [x] The report states which backend explored the repository and which was handed
       a fixed context.
 
 ### 5. Claude Code plugin

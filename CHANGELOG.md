@@ -7,6 +7,20 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- The AI pass is provider-neutral (`schema_version: 3`). `whatsrisky/ai/` holds the backends and
+  `--ai-provider` picks one: `claude-cli` as before, or `openai` over the API with the key from the
+  environment (`OPENAI_API_KEY`, `OPENAI_BASE_URL` to point elsewhere). `--model` is free-form and
+  defaults to the backend's own; the tool is now called `ai` rather than `claude`, with `claude`
+  accepted as an alias.
+- The report states how the model saw the project. An agentic backend explores the repository
+  itself; an API backend is handed a context we choose, and the tool note says so along with how many
+  files it was shown. `detector` carries the provider and the model on every finding.
+- Context selection for non-agentic backends (`whatsrisky/ai/context.py`): auth, routes, middleware
+  and config first, tests and docs last, within `--ai-context-bytes`. Excluded paths are never sent,
+  a `--diff` scope limits it to the changed files, and the skipped count is reported.
+- An API backend refuses what it cannot do instead of returning a confident empty answer: asking
+  `openai` for `--ai-mode review` fails with the reason and the two ways to fix it.
+
 - Self-contained HTML report (`report.html`, on by default). One file, no network: the viewer with
   the report JSON inlined, so the artifact is both the view and the data and the round trip is
   exact. Groups by severity, category, source, who found it, directory or status; filters compose

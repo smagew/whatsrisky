@@ -19,10 +19,13 @@ from typing import Callable
 from .compare import correlate, find_baseline, load_report
 from .models import SEVERITY_ORDER, ScanReport, Severity, ToolResult
 from .report import write_docx, write_html, write_markdown
+from .ai import PROVIDER_CHOICES
 from .runners import ALL_RUNNERS, ScanConfig
-from .util import changed_files, git_info, path_excluded, slugify, which
+from .util import changed_files, git_info, path_excluded, slugify
 
-ALL_TOOLS = ["semgrep", "trivy", "gitleaks", "claude"]
+ALL_TOOLS = ["semgrep", "trivy", "gitleaks", "ai"]
+# `claude` was the tool's name before the pass became provider-neutral.
+TOOL_ALIASES = {"claude": "ai"}
 # claude is NOT a default: it costs the caller money and needs network. Opt in with --ai.
 DEFAULT_TOOLS = ["semgrep", "trivy", "gitleaks"]
 SCHEMA_VERSION = 1
@@ -43,7 +46,7 @@ DEFAULT_EXCLUDES = [
     ".idea", ".vscode", ".DS_Store",
     "whatsrisky-reports",
 ]
-MODEL_CHOICES = ["opus", "sonnet", "haiku"]
+MODEL_CHOICES = ["opus", "sonnet", "haiku"]   # claude-cli aliases, for the UI's convenience
 FORMAT_CHOICES = ["html", "docx", "md", "json"]
 FAIL_ON_CHOICES = ["none", "critical", "high", "medium", "low", "info"]
 
@@ -51,7 +54,7 @@ TOOL_COVERAGE = {
     "semgrep": "First-party source code (SAST)",
     "trivy": "Dependency CVEs, IaC misconfig",
     "gitleaks": "Secrets in tree and git history",
-    "claude": "LLM review of logic and authz",
+    "ai": "LLM review of logic and authz",
 }
 
 
@@ -65,10 +68,12 @@ class ScanOptions:
     formats: list[str] = field(default_factory=lambda: list(FORMAT_CHOICES))
     out_dir: str = ""
     out: str = ""
-    model: str = "opus"
-    claude_mode: str = "full"
-    claude_timeout: int = 3600
-    claude_max_findings: int = 40
+    ai_provider: str = "claude-cli"
+    model: str = ""              # empty means the backend's default
+    ai_mode: str = "full"
+    ai_timeout: int = 3600
+    ai_max_findings: int = 40
+    ai_context_bytes: int = 240_000
     semgrep_configs: list[str] = field(default_factory=lambda: ["auto"])
     trivy_scanners: str = "vuln,misconfig"
     gitleaks_mode: str = "auto"
@@ -89,6 +94,7 @@ class ScanOptions:
     def normalized(self) -> "ScanOptions":
         """Resolve the combinations that cannot work as configured."""
         opts = ScanOptions(**asdict(self))
+        opts.tools = [TOOL_ALIASES.get(t, t) for t in opts.tools]
         opts.tools = [t for t in ALL_TOOLS if t in opts.tools]
         opts.formats = [f for f in FORMAT_CHOICES if f in opts.formats]
         if opts.offline and opts.semgrep_configs == ["auto"]:
@@ -120,9 +126,9 @@ class ScanOptions:
         parts = ["whatsrisky", self.path or "."]
         if self.diff:
             parts += ["--diff", self.diff]
-        if "claude" in self.tools:
+        if "ai" in self.tools:
             parts.append("--ai")
-        tool_set = [t for t in self.tools if t != "claude"]
+        tool_set = [t for t in self.tools if t != "ai"]
         if sorted(tool_set) != sorted(DEFAULT_TOOLS):
             parts += ["--tools", ",".join(tool_set)] if tool_set else ["--tools", "none"]
         if sorted(self.formats) != sorted(FORMAT_CHOICES):
@@ -131,15 +137,19 @@ class ScanOptions:
             parts += ["--out-dir", self.out_dir]
         if self.out:
             parts += ["--out", self.out]
-        if "claude" in self.tools:
-            if self.model != "opus":
+        if "ai" in self.tools:
+            if self.ai_provider != "claude-cli":
+                parts += ["--ai-provider", self.ai_provider]
+            if self.model:
                 parts += ["--model", self.model]
-            if self.claude_mode != "full":
-                parts += ["--claude-mode", self.claude_mode]
-            if self.claude_timeout != 3600:
-                parts += ["--claude-timeout", str(self.claude_timeout)]
-            if self.claude_max_findings != 40:
-                parts += ["--claude-max-findings", str(self.claude_max_findings)]
+            if self.ai_mode != "full":
+                parts += ["--ai-mode", self.ai_mode]
+            if self.ai_timeout != 3600:
+                parts += ["--ai-timeout", str(self.ai_timeout)]
+            if self.ai_max_findings != 40:
+                parts += ["--ai-max-findings", str(self.ai_max_findings)]
+            if self.ai_context_bytes != 240_000:
+                parts += ["--ai-context-bytes", str(self.ai_context_bytes)]
         if self.semgrep_configs != ["auto"]:
             for cfg in self.semgrep_configs:
                 parts += ["--semgrep-config", cfg]
@@ -180,14 +190,15 @@ def probe_tools() -> list[dict]:
     out: list[dict] = []
     for name in ALL_TOOLS:
         runner = ALL_RUNNERS[name](config)
-        path = which(runner.binary)
+        # Not every runner is a binary on PATH: the AI pass asks its backend.
+        found = runner.available()
         out.append(
             {
                 "name": name,
                 "binary": runner.binary,
-                "found": bool(path),
-                "version": runner.version() if path else "",
-                "hint": runner.install_hint,
+                "found": found,
+                "version": runner.version() if found else "",
+                "hint": runner.install_hint if runner.binary else runner.unavailable_reason(),
                 "covers": TOOL_COVERAGE.get(name, ""),
             }
         )
@@ -251,6 +262,10 @@ def validate(options: ScanOptions) -> list[str]:
     unknown = [t for t in options.tools if t not in ALL_RUNNERS]
     if unknown:
         problems.append(f"Unknown scanner(s): {', '.join(unknown)}")
+    if options.ai_provider not in PROVIDER_CHOICES:
+        problems.append(
+            f"Unknown ai provider {options.ai_provider!r}; known: {', '.join(PROVIDER_CHOICES)}"
+        )
     if not options.formats:
         problems.append("No output format selected.")
     return problems
@@ -333,10 +348,12 @@ def build_scan_config(
         trivy_offline=options.offline,
         gitleaks_mode=options.gitleaks_mode,
         gitleaks_timeout=min(options.timeout, 900),
-        claude_model=options.model,
-        claude_mode=options.claude_mode,
-        claude_timeout=options.claude_timeout,
-        claude_max_findings=options.claude_max_findings,
+        ai_provider=options.ai_provider,
+        ai_model=options.model,
+        ai_mode=options.ai_mode,
+        ai_timeout=options.ai_timeout,
+        ai_max_findings=options.ai_max_findings,
+        ai_context_bytes=options.ai_context_bytes,
         exclude=list(excludes) if excludes is not None else options.effective_excludes(),
         min_severity=options.min_severity,
     )
@@ -431,7 +448,7 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
                 "message": f"diff {options.diff}: {len(scope_paths)} changed file(s)",
                 "tools": options.tools,
                 "model": options.model,
-                "claude_mode": options.claude_mode,
+                "ai_mode": options.ai_mode,
             },
         )
         if not scope_paths:
@@ -457,7 +474,7 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
             "message": f"scanning {target}",
             "tools": options.tools,
             "model": options.model,
-            "claude_mode": options.claude_mode,
+            "ai_mode": options.ai_mode,
         },
     )
 

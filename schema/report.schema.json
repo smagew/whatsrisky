@@ -15,7 +15,7 @@
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 2
+      "const": 3
     },
     "generator": {
       "type": "object",
@@ -104,7 +104,7 @@
               "semgrep",
               "trivy",
               "gitleaks",
-              "claude"
+              "ai"
             ]
           },
           "status": {
@@ -273,14 +273,15 @@
                   "semgrep",
                   "trivy",
                   "gitleaks",
-                  "claude"
+                  "ai"
                 ]
               },
               "provider": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Who runs the model: anthropic, openai, … Null for local scanners."
               },
               "model": {
                 "type": [

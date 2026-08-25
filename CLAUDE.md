@@ -34,6 +34,14 @@ A scan is a pipeline: options → scanners in parallel → normalized findings �
   `Finding` objects and maps its native severities onto the shared scale
   explicitly. `base.Runner` gives them availability probing, per-platform install
   hints and the progress channel.
+- `whatsrisky/ai/` — who runs the AI pass. `base.py` defines the contract,
+  including `agentic`: whether the backend reads the repository itself. `claude_cli.py`
+  is agentic, `openai_api.py` is not, `context.py` chooses what a non-agentic
+  backend gets to see. `runners/ai.py` owns the prompts and the JSON contract with
+  the model and knows nothing about who answers.
+- `whatsrisky/compare.py` — rescan correlation. `whatsrisky/categories.py` — CWE to
+  a closed category vocabulary. `whatsrisky/report/templates/viewer.html` — the
+  whole HTML viewer in one file.
 - `whatsrisky/models.py` — `Severity`, `Finding`, `ToolResult`, `ScanReport`, and
   `SCHEMA_VERSION`. The severity mapping rationale lives here.
 - `whatsrisky/report/` — output writers (DOCX, Markdown). They read the model and
@@ -77,6 +85,10 @@ For any non-trivial change, in order:
 - **The AI pass is opt-in, always.** It spends the caller's money and sends code
   to a third party. It is never in a default set, and the report records which
   model produced which finding.
+- **An agentic backend and an API backend are not the same analysis.** One reads
+  the repository, the other sees the slice we chose. The report says which ran and
+  how much it was shown; a backend that cannot do something refuses with the reason
+  instead of returning a confident empty answer.
 - **Testing discipline.** (1) Bug → failing test first. (2) Assert the invariant,
   not a proxy — a test must fail when the feature is actually wrong; parser tests
   run against real scanner output, not mocks. (3) Reproduce the failing variant
@@ -123,6 +135,10 @@ costs time.
   `Finding.__post_init__` and at each DOCX insertion point.
 - **gitleaks has no exclude flag.** Paths are excluded through a generated config
   with `[extend] useDefault = true` + `[[allowlists]] paths` (verified on 8.30.1).
+- **A stub server is how the API backends are tested.** `tests/test_ai.py` runs a
+  local `ThreadingHTTPServer` speaking the chat-completions shape, so request
+  construction, context injection and every error path are covered without a key.
+  What it cannot cover is the real service's behaviour — say so, do not imply it.
 - **`semgrep --config auto` needs the network and metrics.** With `--offline` it
   falls back to `p/security-audit`; `--metrics off` breaks `auto`.
 - **Semgrep suppressions anchor on the call site**, not on the flagged argument's

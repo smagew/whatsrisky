@@ -78,7 +78,7 @@ _ALIASES = {
 SEVERITY_ORDER = tuple(_ORDER)
 
 # Bump when the JSON report shape changes in a way consumers must notice.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class Status:
