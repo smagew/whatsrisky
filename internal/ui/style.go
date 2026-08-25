@@ -33,7 +33,9 @@ var (
 	commandStyle  = lipgloss.NewStyle().Foreground(passColor)
 	panelStyle    = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).
 			BorderForeground(lineColor).PaddingLeft(2)
-	helpStyle = lipgloss.NewStyle().Foreground(ink3Color).MarginTop(1)
+	helpStyle = lipgloss.NewStyle().Foreground(ink3Color)
+	// The primary action needs to look like one: a help line is not a button.
+	actionStyle = lipgloss.NewStyle().Background(passColor).Foreground(lipgloss.Color("235")).Bold(true)
 )
 
 // severityStyle expresses weight with tone, not five accents - the same restraint

@@ -49,6 +49,7 @@ type Model struct {
 
 	width  int
 	height int
+	offset int // first visible line of the scrolling form
 	quit   bool
 	exit   int
 }
@@ -68,7 +69,9 @@ func New(version string, options scan.Options, profile string) *Model {
 // Run opens the interface and returns the process exit code.
 func Run(version string, options scan.Options, profile string) (int, error) {
 	m := New(version, options, profile)
-	program := tea.NewProgram(m, tea.WithAltScreen())
+	// The mouse is not a luxury here: the form has twenty rows, and clicking the
+	// one you want beats stepping to it.
+	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	final, err := program.Run()
 	if err != nil {
 		return 1, err
@@ -168,8 +171,34 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		return m.handleMouse(typed)
+
 	case tea.KeyMsg:
 		return m.handleKey(typed)
+	}
+	return m, nil
+}
+
+func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.mode != modeSettings {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.offset = maxInt(0, m.offset-3)
+	case tea.MouseButtonWheelDown:
+		m.offset += 3
+	case tea.MouseButtonLeft:
+		if msg.Action != tea.MouseActionPress {
+			return m, nil
+		}
+		if row := m.rowAt(msg.Y); row >= 0 {
+			m.current().blur()
+			m.cursor = row
+			m.focusCurrent()
+			m.notice = ""
+		}
 	}
 	return m, nil
 }
@@ -219,6 +248,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.move(-1)
 	case "down", "tab", "enter":
 		m.move(1)
+	case "pgup":
+		m.offset = maxInt(0, m.offset-m.bodyHeight())
+	case "pgdown":
+		m.offset += m.bodyHeight()
+	case "home":
+		m.move(-m.cursor)
 	}
 	return m, nil
 }

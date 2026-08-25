@@ -32,50 +32,176 @@ func (m *Model) header() string {
 
 // --- settings --------------------------------------------------------
 
+// bodyLine is one rendered line of the form, tagged with the field it belongs to
+// so the viewport can keep the cursor visible and the mouse can hit it.
+type bodyLine struct {
+	text string
+	row  int // -1 for a section heading or a hint
+}
+
 func (m *Model) settingsView() string {
 	options := m.collect().Normalized()
-	formWidth := m.formWidth()
+	body := m.formLines(options)
+	header := m.header()
+	footer := m.footer()
+
+	// The form is taller than most terminals, so it scrolls. Without this the
+	// bottom sections and the key bindings were simply cut off - which is how a
+	// form with no visible way to act reads as broken.
+	visible := m.bodyHeight()
+	m.clampOffset(body, visible)
+	window, above, below := windowLines(body, m.offset, visible)
 
 	var form strings.Builder
-	form.WriteString(m.header() + "\n")
+	form.WriteString(header + "\n")
+	if above > 0 {
+		form.WriteString(dimStyle.Render(fmt.Sprintf("  ↑ %d more", above)) + "\n")
+	} else {
+		form.WriteString("\n")
+	}
+	for _, line := range window {
+		form.WriteString(line.text + "\n")
+	}
+	if below > 0 {
+		form.WriteString(dimStyle.Render(fmt.Sprintf("  ↓ %d more", below)) + "\n")
+	}
+	form.WriteString(footer)
+
+	side := m.sidePanel(options)
+	if m.width < 100 {
+		// Narrow: the panel cannot sit beside the form, but dropping it takes the
+		// equivalent command with it - which is the thing that makes this UI worth
+		// using. Keep that much, stacked.
+		return form.String() + "\n" + m.narrowPanel(options)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(m.formWidth()+4).Render(form.String()),
+		panelStyle.Width(m.width-m.formWidth()-8).MaxHeight(maxInt(8, m.height-2)).Render(side))
+}
+
+// formLines renders every row, and records where the cursor's row sits.
+func (m *Model) formLines(options scan.Options) []bodyLine {
+	width := m.formWidth()
+	var out []bodyLine
 	section := ""
 	for index, entry := range m.rows {
 		if entry.section != section {
 			section = entry.section
-			form.WriteString("\n" + sectionStyle.Render(section) + "\n")
+			out = append(out, bodyLine{text: sectionStyle.Render(section), row: -1})
 		}
 		focused := index == m.cursor
 		marker := "  "
-		if focused {
-			marker = focusStyle.Render("› ")
-		}
 		label := labelStyle.Render(fmt.Sprintf("%-26s", entry.field.label()))
 		if focused {
+			marker = focusStyle.Render("› ")
 			label = focusStyle.Render(fmt.Sprintf("%-26s", entry.field.label()))
 		}
-		value := entry.field.render(focused, formWidth)
+		value := entry.field.render(focused, width)
 		if !focused {
 			// A long path used to wrap to column zero and break the column.
-			value = shorten(value, maxInt(20, formWidth-30))
+			value = shorten(value, maxInt(20, width-30))
 		}
-		form.WriteString(marker + label + value + "\n")
+		out = append(out, bodyLine{text: marker + label + value, row: index})
 		if focused && entry.field.hint() != "" {
-			form.WriteString("    " + dimStyle.Render(entry.field.hint()) + "\n")
+			out = append(out, bodyLine{text: "    " + dimStyle.Render(entry.field.hint()), row: -1})
 		}
 	}
-	form.WriteString(helpStyle.Render(
-		"↑↓ move · ←→/space change · ctrl+r run · ctrl+s save profile · ctrl+q quit"))
-	if m.notice != "" {
-		form.WriteString("\n" + warnStyle.Render(m.notice))
-	}
+	return out
+}
 
-	side := m.sidePanel(options)
-	if m.width < 100 {
-		return form.String() + "\n\n" + side
+// footer is pinned: the primary action and the keys must never scroll away.
+func (m *Model) footer() string {
+	var out strings.Builder
+	out.WriteString(actionStyle.Render(" ▶ ctrl+r  run scan ") + "  " +
+		dimStyle.Render("ctrl+s save profile · ctrl+q quit") + "\n")
+	out.WriteString(helpStyle.Render("↑↓ move · ←→ or space change · click a row to jump to it"))
+	if m.notice != "" {
+		out.WriteString("\n" + warnStyle.Render(shorten(m.notice, maxInt(30, m.formWidth()))))
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(formWidth+4).Render(form.String()),
-		panelStyle.Width(m.width-formWidth-8).Render(side))
+	return out.String()
+}
+
+// narrowPanel is what survives when there is no room for a column: the command,
+// and the first thing worth warning about.
+func (m *Model) narrowPanel(options scan.Options) string {
+	lines := []string{commandStyle.Render(shorten(options.CommandLine(), maxInt(30, m.width-2)))}
+	if warnings := m.warnings(options); len(warnings) > 0 {
+		lines = append(lines, shorten(warnings[0], maxInt(30, m.width-2)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// bodyHeight is what is left for the form after the header and the pinned footer.
+func (m *Model) bodyHeight() int {
+	chrome := 6 // header, the two scroll hints, and the two footer lines
+	if m.width < 100 {
+		chrome += 3 // the stacked command and warning
+	}
+	height := m.height
+	if height <= 0 {
+		height = 40
+	}
+	if m.notice != "" {
+		chrome++
+	}
+	return maxInt(4, height-chrome)
+}
+
+// clampOffset scrolls just enough to keep the focused row and its hint in view.
+func (m *Model) clampOffset(body []bodyLine, visible int) {
+	if len(body) <= visible {
+		m.offset = 0
+		return
+	}
+	first, last := -1, -1
+	for index, line := range body {
+		if line.row == m.cursor {
+			if first == -1 {
+				first = index
+			}
+			last = index
+		}
+		if first != -1 && line.row == -1 && index == last+1 {
+			last = index // the hint belongs to the focused row
+		}
+	}
+	if first == -1 {
+		return
+	}
+	if m.offset > first {
+		m.offset = first
+	}
+	if last >= m.offset+visible {
+		m.offset = last - visible + 1
+	}
+	if maximum := len(body) - visible; m.offset > maximum {
+		m.offset = maximum
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+func windowLines(body []bodyLine, offset, visible int) ([]bodyLine, int, int) {
+	if offset < 0 {
+		offset = 0
+	}
+	end := offset + visible
+	if end > len(body) {
+		end = len(body)
+	}
+	return body[offset:end], offset, len(body) - end
+}
+
+// rowAt maps a screen line to the field on it, for the mouse.
+func (m *Model) rowAt(screenY int) int {
+	body := m.formLines(m.collect())
+	m.clampOffset(body, m.bodyHeight())
+	index := m.offset + screenY - 2 // the header and the scroll hint line
+	if index < 0 || index >= len(body) {
+		return -1
+	}
+	return body[index].row
 }
 
 func (m *Model) formWidth() int {
