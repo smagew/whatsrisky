@@ -62,3 +62,38 @@ func TestTheVersionReachesTheReport(t *testing.T) {
 		t.Error("the report writer is never told which build produced it")
 	}
 }
+
+func TestEveryMakefileTargetIsPhony(t *testing.T) {
+	// Every target in this Makefile is a command, not a file. `make install` was a
+	// silent no-op because a file named `install` existed beside it and the target
+	// was not declared phony.
+	body, err := os.ReadFile("../../Makefile")
+	if err != nil {
+		t.Fatalf("reading the makefile: %v", err)
+	}
+	lines := strings.Split(string(body), "\n")
+
+	phony := map[string]bool{}
+	for _, line := range lines {
+		if rest, ok := strings.CutPrefix(line, ".PHONY:"); ok {
+			for _, name := range strings.Fields(rest) {
+				phony[name] = true
+			}
+		}
+	}
+	if len(phony) == 0 {
+		t.Fatal("the Makefile declares no phony targets")
+	}
+
+	target := regexp.MustCompile(`^([a-z][a-z-]*):`)
+	for _, line := range lines {
+		match := target.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		if !phony[match[1]] {
+			t.Errorf("target %q is not in .PHONY, so it stops working "+
+				"as soon as a file of that name exists", match[1])
+		}
+	}
+}

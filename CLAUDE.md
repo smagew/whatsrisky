@@ -132,6 +132,12 @@ For any non-trivial change, in order:
 
 ## Gotchas
 
+- **A terminal UI must be measured, not eyeballed.** The form drew 39 lines with
+  nothing clamping it, so at 100x30 the whole Tuning section and the key bindings
+  were off-screen — and the user reported it before any test did. The height tests
+  in `internal/ui` now assert the view fits 80x24 through 200x60, that the action
+  and the keys never scroll away, and that the equivalent command survives a narrow
+  terminal.
 - **`make build` targets `dist/`, never `./whatsrisky`.** That name was the Python
   package directory, and building over it deleted the tree once, three phases
   before the plan said it should go.

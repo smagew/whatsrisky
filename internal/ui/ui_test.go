@@ -62,7 +62,7 @@ func TestTheFormRendersEverySettingAndItsCommand(t *testing.T) {
 		"whatsrisky", "no profile", "report schema 3",
 		"Profile", "Project", "Scanners", "AI review", "Output", "Filtering", "Tuning",
 		"Equivalent command", "whatsrisky /some/project",
-		"ctrl+r run",
+		"run scan", "ctrl+r",
 	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the form is missing %q", want)
@@ -351,5 +351,153 @@ func TestAPlaceholderDoesNotReadLikeAValue(t *testing.T) {
 					entry.field.label(), placeholder)
 			}
 		}
+	}
+}
+
+// --- the form has to fit the terminal --------------------------------
+//
+// The defect these exist for: the form drew 39 lines and nothing clamped it, so at
+// 100x30 the whole Tuning section and the key bindings were off-screen. A form
+// with no visible way to act reads as broken.
+
+func viewHeight(view string) int { return len(strings.Split(view, "\n")) }
+
+func TestTheFormFitsEveryReasonableTerminal(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	for _, size := range []struct{ width, height int }{
+		{80, 24}, {100, 30}, {120, 40}, {160, 50}, {200, 60},
+	} {
+		m := New("0.3.0", options, "")
+		m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
+		if got := viewHeight(m.settingsView()); got > size.height {
+			t.Errorf("%dx%d: the form draws %d lines and does not fit",
+				size.width, size.height, got)
+		}
+	}
+}
+
+func TestTheActionAndTheKeysNeverScrollAway(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	m := New("0.3.0", options, "")
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 26})
+
+	// From the first row to the last, the footer stays put.
+	for step := 0; step < len(m.rows)+2; step++ {
+		view := m.settingsView()
+		if !strings.Contains(view, "ctrl+r") {
+			t.Fatalf("the run action disappeared at row %d:\n%s", m.cursor, view)
+		}
+		if !strings.Contains(view, "↑↓ move") {
+			t.Fatalf("the key help disappeared at row %d", m.cursor)
+		}
+		press(m, "down")
+	}
+}
+
+func TestScrollingKeepsTheFocusedRowVisible(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	m := New("0.3.0", options, "")
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 26})
+
+	// Walk to the last row; it and its hint must be on screen.
+	for range m.rows {
+		press(m, "down")
+	}
+	m.cursor = len(m.rows) - 1
+	m.focusCurrent()
+	view := m.settingsView()
+	last := m.rows[len(m.rows)-1].field.label()
+	if !strings.Contains(view, last) {
+		t.Errorf("the last row (%s) is not visible:\n%s", last, view)
+	}
+
+	// And back at the top, the first row is visible again.
+	m.cursor = 0
+	m.focusCurrent()
+	if view := m.settingsView(); !strings.Contains(view, m.rows[0].field.label()) {
+		t.Errorf("the first row is not visible after scrolling back:\n%s", view)
+	}
+}
+
+func TestTheEquivalentCommandSurvivesANarrowTerminal(t *testing.T) {
+	// Dropping the side panel used to take the command with it, which is the thing
+	// that makes this UI worth using.
+	options := scan.NewOptions()
+	options.Path = "/some/project"
+	m := New("0.3.0", options, "")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	if view := m.settingsView(); !strings.Contains(view, "whatsrisky /some/project") {
+		t.Errorf("the equivalent command is gone at 80 columns:\n%s", view)
+	}
+}
+
+func TestACyclingFieldLooksLikeOneWhenUnfocused(t *testing.T) {
+	// Without the brackets, half the form read as static text.
+	m := newTestModel(t, scan.NewOptions(), "")
+	m.cursor = indexOfField(m, "save as") // focus something else
+	m.focusCurrent()
+	view := m.settingsView()
+	for _, label := range []string{"minimum severity", "fail-on", "open when done"} {
+		index := strings.Index(view, label)
+		if index < 0 {
+			continue
+		}
+		line := view[index:]
+		if end := strings.Index(line, "\n"); end > 0 {
+			line = line[:end]
+		}
+		if !strings.Contains(line, "‹") {
+			t.Errorf("%q does not read as changeable: %q", label, line)
+		}
+	}
+}
+
+func TestClickingARowFocusesIt(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	m := New("0.3.0", options, "")
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	body := m.formLines(m.collect())
+	m.clampOffset(body, m.bodyHeight())
+	// Find a screen line that carries a row other than the current one.
+	target, screenY := -1, 0
+	for index, line := range body {
+		if line.row > 0 && line.row != m.cursor {
+			target, screenY = line.row, index-m.offset+2
+			break
+		}
+	}
+	if target < 0 {
+		t.Fatal("no other row to click")
+	}
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, Y: screenY})
+	if m.cursor != target {
+		t.Errorf("clicking row %d focused %d", target, m.cursor)
+	}
+}
+
+func TestTheWheelScrollsWithoutMovingTheCursor(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	m := New("0.3.0", options, "")
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 26})
+	_ = m.settingsView() // establish the offset
+
+	before := m.cursor
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	if m.offset == 0 {
+		t.Error("the wheel did not scroll")
+	}
+	if m.cursor != before {
+		t.Error("the wheel must not move the focus")
+	}
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	if m.offset != 0 {
+		t.Errorf("scrolling back should reach the top, offset %d", m.offset)
 	}
 }

@@ -6,6 +6,9 @@ LDFLAGS := -s -w -X main.Version=$(VERSION)
 PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64
 PREFIX ?= $(HOME)/.local/bin
 
+# Every target here is a command, not a file. Without this, `make install` becomes a
+# no-op the moment a file named `install` exists next to it - which is exactly what
+# happened.
 .PHONY: help check lint test test-all selfscan build build-all install uninstall print-version release-notes live-ai clean
 
 help:
@@ -34,13 +37,11 @@ build:  ## build the binary into dist/
 # The development install: build straight onto PATH, so the command is whatever is
 # checked out. Re-run it after switching branches - unlike a Python editable
 # install, a binary does not follow the source on its own.
-install: | $(PREFIX)  ## build and put the binary on PATH (PREFIX=~/.local/bin)
+install:  ## build and put the binary on PATH (PREFIX=~/.local/bin)
+	@mkdir -p $(PREFIX)
 	go build -ldflags '$(LDFLAGS)' -o $(PREFIX)/whatsrisky ./cmd/whatsrisky
 	@echo "installed $$($(PREFIX)/whatsrisky --version) to $(PREFIX)/whatsrisky"
 	@case ":$$PATH:" in *":$(PREFIX):"*) ;; *) echo "note: $(PREFIX) is not on your PATH" ;; esac
-
-$(PREFIX):
-	@mkdir -p $(PREFIX)
 
 uninstall:  ## remove the installed binary
 	rm -f $(PREFIX)/whatsrisky

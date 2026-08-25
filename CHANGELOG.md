@@ -5,6 +5,22 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The settings form fits the terminal. It drew 39 lines with nothing clamping them,
+  so on a 100x30 terminal the whole Tuning section and the key bindings were simply
+  cut off — a form with no visible way to act. It scrolls now, keeping the focused
+  row in view, with the primary action and the key help pinned below it and a
+  `↓ N more` indicator. Tested from 80x24 to 200x60.
+- The equivalent command survives a narrow terminal. Below 100 columns the side
+  panel cannot sit beside the form; it used to disappear entirely, taking with it
+  the thing that makes the UI worth using. The command and the first warning are
+  stacked underneath instead.
+- A cycling field looks like one: choices and toggles keep their `‹ … ›` brackets
+  when unfocused, so half the form no longer reads as static text.
+- The mouse works: click a row to focus it, wheel to scroll. Stepping through
+  twenty rows with the arrows was the only way to reach anything.
+
 ## [0.3.0] - 2026-08-25
 
 Rewritten in Go. One binary, no runtime, installed the way the scanners it

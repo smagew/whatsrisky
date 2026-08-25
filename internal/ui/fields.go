@@ -136,7 +136,9 @@ func (f *choiceField) render(focused bool, width int) string {
 	if focused {
 		return focusStyle.Render("‹ " + text + " ›")
 	}
-	return valueStyle.Render(text)
+	// The brackets stay: without them a cycling field reads as static text, which
+	// is how half the form looked inert.
+	return dimStyle.Render("‹ ") + valueStyle.Render(text) + dimStyle.Render(" ›")
 }
 
 func (f *choiceField) update(msg tea.KeyMsg) bool {
@@ -193,7 +195,7 @@ func (f *toggleField) render(focused bool, width int) string {
 	if focused {
 		return focusStyle.Render("‹ " + mark + " ›")
 	}
-	return style.Render(mark)
+	return dimStyle.Render("‹ ") + style.Render(mark) + dimStyle.Render(" ›")
 }
 
 func (f *toggleField) update(msg tea.KeyMsg) bool {
