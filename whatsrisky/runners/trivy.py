@@ -116,6 +116,7 @@ class TrivyRunner(Runner):
                     installed_version=installed,
                     fixed_version=fixed,
                     cvss=_cvss(v),
+                    pass_name="vuln",
                     raw={"primary_url": v.get("PrimaryURL", "")},
                 )
             )
@@ -141,6 +142,7 @@ class TrivyRunner(Runner):
                     end_line=cause.get("EndLine") or None,
                     references=[r for r in (m.get("References") or [])][:5],
                     remediation=truncate(m.get("Resolution", ""), 1200),
+                    pass_name="misconfig",
                     snippet=read_snippet(self.config.target, target, line),
                 )
             )
@@ -169,6 +171,7 @@ class TrivyRunner(Runner):
                         "and from git history, then load it from a secret manager or environment."
                     ),
                     snippet=truncate(s.get("Match", ""), 300),
+                    pass_name="secret",
                 )
             )
         return out

@@ -16,6 +16,8 @@ from ..util import clean_text, platform_key, tail, which
 class ScanConfig:
     target: Path
     work_dir: Path
+    # ai
+    ai_provider: str = "claude-cli"
     # scope: when set, only these paths are scanned (resolved from a git range)
     scope_paths: list[str] = field(default_factory=list)
     diff_range: str = ""
@@ -30,10 +32,11 @@ class ScanConfig:
     gitleaks_mode: str = "auto"  # auto | dir | git
     gitleaks_timeout: int = 600
     # claude
-    claude_model: str = "opus"
-    claude_mode: str = "full"  # full | review | both
-    claude_timeout: int = 3600
-    claude_max_findings: int = 40
+    ai_model: str = ""          # empty means the backend's default
+    ai_mode: str = "full"       # full | review | both
+    ai_timeout: int = 3600
+    ai_max_findings: int = 40
+    ai_context_bytes: int = 240_000
     # shared
     exclude: list[str] = field(default_factory=list)
     min_severity: str = "INFO"
@@ -77,6 +80,10 @@ class Runner:
     def available(self) -> bool:
         return bool(self.binary) and which(self.binary) is not None
 
+    def unavailable_reason(self) -> str:
+        """Why this runner cannot run. Not every runner is a binary on PATH."""
+        return f"`{self.binary}` not found in PATH. Install: {self.install_hint}"
+
     def version(self) -> str:
         from ..util import tool_version
 
@@ -91,7 +98,7 @@ class Runner:
         result = ToolResult(name=self.name)
         if not self.available():
             result.status = "missing"
-            result.message = f"`{self.binary}` not found in PATH. Install: {self.install_hint}"
+            result.message = self.unavailable_reason()
             return result
         result.version = clean_text(self.version())
         started = time.monotonic()

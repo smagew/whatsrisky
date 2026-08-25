@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en" data-p="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  /* ── tokens ────────────────────────────────────────────────────────────────
+     The palettes are whydiff's, so the two windows read as one family. Severity
+     is expressed with tone and weight over three hues — flag, caution, neutral —
+     rather than five accents, for the same reason whydiff refuses a hue per
+     group: five accents stop meaning anything. */
+  :root, [data-p="graphite"] {       /* dark-first, brass — ships by default */
+    --canvas:#14161A; --panel:#1E2126; --sunken:#0F1113;
+    --line:#31363D;   --line-strong:#454B53;
+    --ink:#DDE1E6;    --ink-2:#C3C9D0;  --ink-3:#8E969E;
+    --mark:#C9A227;   --flag:#D2635A;   --flag-soft:#2B1F1C;
+    --pass:#6DB98C;   --caution:#CBA23E;
+    --mark-ink:#14161A;
+    --syn-key:#C0A0D0; --syn-str:#9DBE8C; --syn-num:#D6B487; --syn-fn:#8FB6D9;
+  }
+  [data-p="slate"] {                 /* slate — monochrome, one signal colour */
+    --canvas:#EEF0F2; --panel:#F8F9FA; --sunken:#E4E7EA;
+    --line:#D5D9DC;   --line-strong:#BEC3C8;
+    --ink:#282D31;    --ink-2:#4A5054;  --ink-3:#5C6368;
+    --mark:#15181B;   --flag:#8A2B3D;   --flag-soft:#EFE3E5;
+    --pass:#2F6E4E;   --caution:#8A5E1E;
+    --mark-ink:#F8F9FA;
+    --syn-key:#5B3B87; --syn-str:#3F6B45; --syn-num:#8A5A2B; --syn-fn:#2E5A87;
+  }
+  [data-p="bond"] {                  /* neutral near-white, plum */
+    --canvas:#FBFBF9; --panel:#FFFFFF; --sunken:#F0F0EE;
+    --line:#E2E2DF;   --line-strong:#C9C9C5;
+    --ink:#2F2F2E;    --ink-2:#3D3D3B;  --ink-3:#62625F;
+    --mark:#5B2B4A;   --flag:#8F2A2A;   --flag-soft:#F5EAEA;
+    --pass:#2F6E4E;   --caution:#8A5E1E;
+    --mark-ink:#FFFFFF;
+    --syn-key:#6E3E7A; --syn-str:#3F6B45; --syn-num:#8A5A2B; --syn-fn:#2E5A87;
+  }
+  :root {
+    /* No webfont: the viewer is rewritten while a scan runs and must stay small,
+       and a self-contained file may not fetch one. Two families, no serif. */
+    --ui:   system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --r-input: 3px; --r-overlay: 5px;
+    --t: 140ms ease-out;
+    --measure: 78ch;
+    /* Severity: weight, not hue. Critical fills, high inks, medium cautions,
+       low and info recede. */
+    --sev-critical-ink: var(--flag);     --sev-critical-bg: var(--flag-soft);
+    --sev-high-ink:     var(--flag);     --sev-high-bg: transparent;
+    --sev-medium-ink:   var(--caution);  --sev-medium-bg: transparent;
+    --sev-low-ink:      var(--ink-2);    --sev-low-bg: transparent;
+    --sev-info-ink:     var(--ink-3);    --sev-info-bg: transparent;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* a display rule would otherwise win */
+  html, body { margin: 0; }
+  body {
+    background: var(--canvas); color: var(--ink);
+    font: 14px/1.55 var(--ui);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+  code, pre, .mono { font-family: var(--mono); font-size: 13px; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 20px 64px; }
+
+  /* ── header ─────────────────────────────────────────────────────────────── */
+  header { border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+  .titlerow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 21px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  .verdict { font-size: 14px; font-weight: 600; }
+  .score { color: var(--ink-3); font-size: 14px; }
+  .meta { color: var(--ink-3); font-size: 13px; margin-top: 6px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+  .live {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--caution); color: var(--caution);
+    border-radius: var(--r-input); padding: 1px 7px; font-size: 13px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 3px; background: var(--caution); }
+  @media (prefers-reduced-motion: no-preference) {
+    .dot { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+  }
+
+  /* ── severity strip ─────────────────────────────────────────────────────── */
+  .strip { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 0; }
+  .tile {
+    border: 1px solid var(--line); border-radius: var(--r-input);
+    padding: 7px 11px; min-width: 96px; background: var(--panel);
+    cursor: pointer; font: inherit; color: inherit; text-align: left;
+  }
+  .tile:hover { border-color: var(--line-strong); }
+  .tile[aria-pressed="true"] { border-color: var(--ink-3); background: var(--sunken); }
+  .tile .n { font-size: 19px; font-weight: 650; display: block; line-height: 1.2; }
+  .tile .k { font-size: 13px; color: var(--ink-3); }
+  .tile.critical .n { color: var(--sev-critical-ink); }
+  .tile.high .n { color: var(--sev-high-ink); }
+  .tile.medium .n { color: var(--sev-medium-ink); }
+  .tile.low .n { color: var(--sev-low-ink); }
+  .tile.info .n { color: var(--sev-info-ink); }
+
+  /* ── coverage gaps: as loud as findings, because unscanned is not clean ──── */
+  .gaps { border: 1px solid var(--flag); border-radius: var(--r-input); padding: 12px 14px; margin: 16px 0 0; }
+  .gaps h2 { font-size: 14px; margin: 0 0 6px; color: var(--flag); font-weight: 600; }
+  .gaps ul { margin: 0; padding-left: 18px; }
+  .gaps li { font-size: 13px; color: var(--ink-2); }
+  .scanners { margin: 16px 0 0; font-size: 13px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
+  .scanners span b { color: var(--ink-2); font-weight: 500; }
+  .ok { color: var(--pass); }
+  .bad { color: var(--flag); }
+  .pending { color: var(--caution); }
+
+  /* ── controls ───────────────────────────────────────────────────────────── */
+  .controls {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    padding: 12px 0; margin-top: 12px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--canvas); z-index: 2;
+  }
+  label.ctl { font-size: 13px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px; }
+  select, input[type="search"] {
+    font: inherit; font-size: 13px; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r-input); padding: 4px 7px;
+  }
+  select:focus, input:focus { outline: 1px solid var(--ink-3); outline-offset: 1px; }
+  input[type="search"] { min-width: 190px; }
+  .chip {
+    font: inherit; font-size: 13px; color: var(--ink-2);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r-input); padding: 3px 9px; cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { border-color: var(--ink-3); color: var(--ink); background: var(--sunken); }
+  .chip.reset { color: var(--ink-3); }
+  .spacer { flex: 1 1 auto; }
+
+  /* ── groups and findings ────────────────────────────────────────────────── */
+  .grouphead {
+    display: flex; align-items: baseline; gap: 10px;
+    margin: 22px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line);
+  }
+  .grouphead h2 { font-size: 15px; margin: 0; font-weight: 600; }
+  .grouphead .n { color: var(--ink-3); font-size: 13px; }
+  .grouphead .why { color: var(--ink-3); font-size: 13px; font-style: italic; }
+
+  .f { border: 1px solid var(--line); border-radius: var(--r-input); background: var(--panel); margin: 7px 0; }
+  .f > summary {
+    cursor: pointer; padding: 9px 12px; display: flex; gap: 10px; align-items: baseline;
+    list-style: none; flex-wrap: wrap;
+  }
+  .f > summary::-webkit-details-marker { display: none; }
+  .f[open] { border-color: var(--line-strong); }
+  .f .sev { font-size: 13px; font-weight: 600; border-radius: var(--r-input); padding: 0 6px; white-space: nowrap; }
+  .sev.critical { color: var(--sev-critical-ink); background: var(--sev-critical-bg); }
+  .sev.high { color: var(--sev-high-ink); }
+  .sev.medium { color: var(--sev-medium-ink); }
+  .sev.low { color: var(--sev-low-ink); }
+  .sev.info { color: var(--sev-info-ink); }
+  .f .name { font-weight: 550; flex: 1 1 340px; }
+  .f .where { font-family: var(--mono); font-size: 13px; color: var(--ink-3); }
+  .f .tags { display: flex; gap: 7px; font-size: 13px; color: var(--ink-3); flex-wrap: wrap; }
+  .f.past .name, .f.past .where { color: var(--ink-3); }
+  .f.past .name { text-decoration: line-through; text-decoration-color: var(--ink-3); }
+  .st { font-size: 13px; border: 1px solid var(--line-strong); border-radius: var(--r-input); padding: 0 6px; color: var(--ink-3); }
+  .st.new { color: var(--flag); border-color: var(--flag); }
+  .st.resolved { color: var(--pass); border-color: var(--pass); }
+  .st.reintroduced { color: var(--caution); border-color: var(--caution); }
+
+  .body { padding: 0 12px 12px; max-width: var(--measure); }
+  .body p { margin: 8px 0; color: var(--ink-2); }
+  .body h3 { font-size: 13px; margin: 12px 0 4px; color: var(--ink-3); font-weight: 600; }
+  pre {
+    margin: 4px 0; padding: 8px 10px; background: var(--sunken);
+    border: 1px solid var(--line); border-radius: var(--r-input);
+    overflow-x: auto; white-space: pre; color: var(--ink-2);
+  }
+  .kv { font-size: 13px; color: var(--ink-3); display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 0; }
+  .kv b { color: var(--ink-2); font-weight: 500; }
+  .refs { font-size: 13px; margin: 4px 0 0; padding-left: 18px; color: var(--ink-3); }
+  .empty { color: var(--ink-3); padding: 28px 0; font-size: 14px; }
+
+  footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 13px; }
+  footer .row { display: flex; gap: 14px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="titlerow">
+      <h1 id="project"></h1>
+      <span class="verdict" id="verdict"></span>
+      <span class="score" id="score"></span>
+      <span id="livebox"></span>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="strip" id="strip"></div>
+    <div id="gapsbox"></div>
+    <div class="scanners" id="scanners"></div>
+  </header>
+
+  <nav class="controls">
+    <label class="ctl">group
+      <select id="group">
+        <option value="severity">by severity</option>
+        <option value="category">by category</option>
+        <option value="source">by source</option>
+        <option value="detector">by who found it</option>
+        <option value="directory">by directory</option>
+        <option value="status">by status</option>
+      </select>
+    </label>
+    <label class="ctl">category <select id="fcat"></select></label>
+    <label class="ctl">source <select id="fsrc"></select></label>
+    <label class="ctl">found by <select id="fdet"></select></label>
+    <button class="chip" id="showpast" aria-pressed="false" type="button"></button>
+    <input type="search" id="q" placeholder="filter by text, file or rule">
+    <span class="spacer"></span>
+    <label class="ctl" id="autobox" hidden>
+      <input type="checkbox" id="auto"> refresh while running
+    </label>
+    <label class="ctl">theme
+      <select id="palette">
+        <option value="graphite">graphite</option>
+        <option value="slate">slate</option>
+        <option value="bond">bond</option>
+      </select>
+    </label>
+    <button class="chip reset" id="reset" type="button">reset</button>
+  </nav>
+
+  <main id="out"></main>
+
+  <footer>
+    <div class="row" id="foot"></div>
+  </footer>
+</div>
+
+<script id="report-data" type="application/json">__REPORT_JSON__</script>
+<script>
+"use strict";
+const R = JSON.parse(document.getElementById("report-data").textContent);
+const SEVS = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+const ACTIVE = new Set(["new", "open", "reintroduced"]);
+const SEV_LABEL = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low", INFO: "Info" };
+const sevLabel = (s) => SEV_LABEL[s] || String(s || "");
+const SEV_MEANING = {
+  CRITICAL: "fix now — exploitable with severe impact",
+  HIGH: "fix before the next release",
+  MEDIUM: "plan remediation",
+  LOW: "hardening",
+  INFO: "informational",
+};
+const el = (tag, cls, text) => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+};
+const lower = (s) => String(s || "").toLowerCase();
+
+/* ── state lives in the URL, so a filtered view is a link ─────────────────── */
+const DEFAULTS = { group: "severity", sev: [], cat: "", src: "", det: "", past: false, q: "" };
+let S = { ...DEFAULTS };
+
+function readHash() {
+  const raw = new URLSearchParams(location.hash.replace(/^#/, ""));
+  S = { ...DEFAULTS };
+  if (raw.get("group")) S.group = raw.get("group");
+  if (raw.get("sev")) S.sev = raw.get("sev").split(",").filter(Boolean);
+  ["cat", "src", "det", "q"].forEach((k) => { if (raw.get(k)) S[k] = raw.get(k); });
+  S.past = raw.get("past") === "1";
+}
+function writeHash() {
+  const raw = new URLSearchParams();
+  if (S.group !== DEFAULTS.group) raw.set("group", S.group);
+  if (S.sev.length) raw.set("sev", S.sev.join(","));
+  ["cat", "src", "det", "q"].forEach((k) => { if (S[k]) raw.set(k, S[k]); });
+  if (S.past) raw.set("past", "1");
+  const next = raw.toString();
+  history.replaceState(null, "", next ? "#" + next : location.pathname);
+}
+
+/* ── grouping ─────────────────────────────────────────────────────────────── */
+const detectorOf = (f) => {
+  const d = f.detector || {};
+  return d.model ? d.tool + " · " + d.model : d.tool || "unknown";
+};
+const dirOf = (f) => {
+  const path = f.file || "";
+  if (!path) return f.package ? "(dependencies)" : "(no file)";
+  const cut = path.lastIndexOf("/");
+  return cut === -1 ? "(root)" : path.slice(0, cut);
+};
+const GROUPERS = {
+  severity: {
+    key: (f) => f.severity,
+    order: (k) => SEVS.indexOf(k),
+    note: (k) => SEV_MEANING[k] || "",
+    label: sevLabel,
+  },
+  category: { key: (f) => f.category_label || f.category || "other" },
+  source: { key: (f) => f.source || "unknown" },
+  detector: { key: detectorOf },
+  directory: { key: dirOf },
+  status: { key: (f) => f.status || "open" },
+};
+
+function visible() {
+  const q = lower(S.q);
+  return (R.findings || []).filter((f) => {
+    if (!S.past && !ACTIVE.has(f.status)) return false;
+    if (S.sev.length && !S.sev.includes(f.severity)) return false;
+    if (S.cat && f.category !== S.cat) return false;
+    if (S.src && f.source !== S.src) return false;
+    if (S.det && detectorOf(f) !== S.det) return false;
+    if (q) {
+      const hay = lower([f.title, f.file, f.rule_id, f.package, f.description, f.category_label].join(" "));
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+/* ── rendering ────────────────────────────────────────────────────────────── */
+function renderHeader() {
+  document.title = R.project_name + " — whatsrisky";
+  document.getElementById("project").textContent = R.project_name || "report";
+  const worst = SEVS.find((s) => (R.counts || {})[s] > 0);
+  const verdict = document.getElementById("verdict");
+  verdict.textContent = R.verdict || "";
+  // Running or partial is never painted as a pass.
+  verdict.style.color = worst
+    ? "var(--sev-" + lower(worst) + "-ink)"
+    : R.status === "complete" ? "var(--pass)" : "var(--caution)";
+  document.getElementById("score").textContent =
+    "risk " + (R.risk_score ?? 0) + "/100 · " + (R.active_findings ?? 0) + " open";
+
+  const meta = document.getElementById("meta");
+  meta.textContent = "";
+  const bits = [
+    ["path", R.project_path],
+    ["scan", R.scan_id],
+    ["git", [R.git_branch, R.git_commit].filter(Boolean).join(" @ ")],
+    ["scope", R.diff_range ? R.diff_range + " (" + (R.scope_paths || []).length + " files)" : "whole project"],
+    ["started", R.started_at],
+    ["took", R.duration_s ? R.duration_s + "s" : ""],
+  ];
+  bits.forEach(([k, v]) => {
+    if (!v) return;
+    const span = el("span");
+    span.append(el("b", null, k + " "), document.createTextNode(String(v)));
+    meta.append(span);
+  });
+
+  const live = document.getElementById("livebox");
+  live.textContent = "";
+  if (R.status === "running") {
+    const done = (R.tools || []).filter((t) => !["pending", "running"].includes(t.status)).length;
+    const box = el("span", "live");
+    box.append(el("span", "dot"), document.createTextNode("scanning — " + done + " of " + (R.tools || []).length + " done"));
+    live.append(box);
+  } else if (R.status === "partial") {
+    live.append(el("span", "live", "partial — a scanner failed"));
+  }
+
+  const strip = document.getElementById("strip");
+  strip.textContent = "";
+  SEVS.forEach((sev) => {
+    const tile = el("button", "tile " + lower(sev));
+    tile.type = "button";
+    tile.setAttribute("aria-pressed", S.sev.includes(sev) ? "true" : "false");
+    tile.append(el("span", "n", (R.counts || {})[sev] ?? 0), el("span", "k", sevLabel(sev)));
+    tile.onclick = () => {
+      S.sev = S.sev.includes(sev) ? S.sev.filter((s) => s !== sev) : [...S.sev, sev];
+      apply();
+    };
+    strip.append(tile);
+  });
+
+  // Coverage gaps sit with the counts, not in an appendix: a scanner that did not
+  // run means that area is unscanned, and the reader must see it here.
+  const gapsBox = document.getElementById("gapsbox");
+  gapsBox.textContent = "";
+  const gaps = (R.tools || []).filter((t) => ["missing", "error", "skipped"].includes(t.status));
+  if (gaps.length) {
+    const box = el("section", "gaps");
+    box.append(el("h2", null, "Coverage gaps — these areas were not scanned, not found clean"));
+    const list = el("ul");
+    gaps.forEach((t) => list.append(el("li", null, t.name + " — " + t.status + (t.message ? ": " + t.message : ""))));
+    box.append(list);
+    gapsBox.append(box);
+  }
+
+  const scanners = document.getElementById("scanners");
+  scanners.textContent = "";
+  (R.tools || []).forEach((t) => {
+    const cls = t.status === "ok" ? "ok" : ["pending", "running"].includes(t.status) ? "pending" : "bad";
+    const span = el("span");
+    span.append(el("b", null, t.name + " "), el("span", cls, t.status));
+    if (t.status === "ok") span.append(document.createTextNode(" · " + t.findings + " · " + Math.round(t.duration_s || 0) + "s"));
+    scanners.append(span);
+  });
+}
+
+function fillFilters() {
+  const opts = (id, values, current, label) => {
+    const select = document.getElementById(id);
+    select.textContent = "";
+    select.append(new Option("all", ""));
+    values.forEach(([value, count]) => select.append(new Option(label(value) + " (" + count + ")", value)));
+    select.value = current;
+  };
+  const tally = (fn) => {
+    const map = new Map();
+    (R.findings || []).forEach((f) => { if (S.past || ACTIVE.has(f.status)) map.set(fn(f), (map.get(fn(f)) || 0) + 1); });
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  };
+  const labels = new Map((R.findings || []).map((f) => [f.category, f.category_label || f.category]));
+  opts("fcat", tally((f) => f.category), S.cat, (v) => labels.get(v) || v);
+  opts("fsrc", tally((f) => f.source), S.src, (v) => v);
+  opts("fdet", tally(detectorOf), S.det, (v) => v);
+  document.getElementById("group").value = S.group;
+  document.getElementById("q").value = S.q;
+  const past = (R.findings || []).filter((f) => !ACTIVE.has(f.status)).length;
+  const button = document.getElementById("showpast");
+  button.textContent = past ? "resolved & accepted (" + past + ")" : "no resolved yet";
+  button.disabled = past === 0;
+  button.setAttribute("aria-pressed", S.past ? "true" : "false");
+}
+
+function findingCard(f) {
+  const card = el("details", "f" + (ACTIVE.has(f.status) ? "" : " past"));
+  const head = el("summary");
+  head.append(el("span", "sev " + lower(f.severity), sevLabel(f.severity)));
+  head.append(el("span", "name", f.title));
+  const where = f.file ? f.file + (f.line ? ":" + f.line : "") : (f.package || "");
+  if (where) head.append(el("span", "where", where));
+  const tags = el("span", "tags");
+  if (f.status && f.status !== "open") tags.append(el("span", "st " + f.status, f.status));
+  if (f.category_label) tags.append(el("span", null, f.category_label));
+  tags.append(el("span", null, detectorOf(f)));
+  head.append(tags);
+  card.append(head);
+
+  const body = el("div", "body");
+  (f.description || "").split(/\n{2,}/).forEach((chunk) => { if (chunk.trim()) body.append(el("p", null, chunk.trim())); });
+  if (f.snippet) { body.append(el("h3", null, "Evidence")); body.append(el("pre", null, f.snippet)); }
+  if (f.remediation) { body.append(el("h3", null, "How to fix")); body.append(el("p", null, f.remediation)); }
+
+  const kv = el("div", "kv");
+  const facts = [
+    ["rule", f.rule_id],
+    ["package", f.package ? f.package + " " + (f.installed_version || "") + (f.fixed_version ? " → " + f.fixed_version : " → no fix") : ""],
+    ["cwe", (f.cwe || []).join(", ")],
+    ["owasp", (f.owasp || []).join(", ")],
+    ["cvss", f.cvss],
+    ["confidence", f.confidence],
+    ["source", f.source],
+    ["moved from", f.moved_from],
+    ["first seen", f.first_seen],
+    ["id", f.fingerprint],
+  ];
+  facts.forEach(([k, v]) => {
+    if (!v) return;
+    const span = el("span");
+    span.append(el("b", null, k + " "), document.createTextNode(String(v)));
+    kv.append(span);
+  });
+  body.append(kv);
+  if ((f.references || []).length) {
+    const list = el("ul", "refs");
+    f.references.slice(0, 5).forEach((href) => {
+      const item = el("li");
+      const link = el("a", null, href);
+      link.href = href;
+      link.rel = "noreferrer";
+      item.append(link);
+      list.append(item);
+    });
+    body.append(list);
+  }
+  card.append(body);
+  return card;
+}
+
+function render() {
+  const out = document.getElementById("out");
+  out.textContent = "";
+  const items = visible();
+  if (!items.length) {
+    const total = (R.findings || []).length;
+    out.append(el("p", "empty", total
+      ? "No finding matches these filters — " + total + " in the report."
+      : (R.status === "running" ? "Nothing found yet; the scan is still running." : "No findings from the scanners that ran. Check the coverage gaps above before reading this as clean.")));
+    return;
+  }
+  const grouper = GROUPERS[S.group] || GROUPERS.severity;
+  const groups = new Map();
+  items.forEach((f) => {
+    const key = grouper.key(f) || "other";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  });
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (grouper.order) return grouper.order(a) - grouper.order(b);
+    const diff = groups.get(b).length - groups.get(a).length;
+    return diff || String(a).localeCompare(String(b));
+  });
+  keys.forEach((key) => {
+    const rows = groups.get(key).sort((a, b) => SEVS.indexOf(a.severity) - SEVS.indexOf(b.severity));
+    const head = el("div", "grouphead");
+    head.append(el("h2", null, grouper.label ? grouper.label(key) : String(key)));
+    head.append(el("span", "n", rows.length + (rows.length === 1 ? " finding" : " findings")));
+    const note = grouper.note ? grouper.note(key) : "";
+    if (note) head.append(el("span", "why", note));
+    out.append(head);
+    rows.forEach((f) => out.append(findingCard(f)));
+  });
+}
+
+function renderFooter() {
+  const foot = document.getElementById("foot");
+  foot.textContent = "";
+  const comparison = R.comparison;
+  const bits = [
+    comparison ? "vs " + (comparison.baseline_scan_id || "baseline") + ": " +
+      Object.entries(comparison.counts || {}).filter(([, n]) => n).map(([k, n]) => n + " " + k).join(", ") +
+      (comparison.moved ? " · " + comparison.moved + " moved" : "") : "no baseline to compare against",
+    (R.excluded_findings ? R.excluded_findings + " finding(s) dropped by " : "") +
+      (R.excludes || []).length + " exclusion pattern(s)",
+    "generated by " + (R.generator ? R.generator.name + " " + R.generator.version : "whatsrisky") +
+      " · schema " + R.schema_version,
+    "automated scanning is a floor, not a ceiling",
+  ];
+  bits.forEach((text) => foot.append(el("span", null, text)));
+}
+
+/* ── wiring ───────────────────────────────────────────────────────────────── */
+function apply() {
+  writeHash();
+  renderHeader();
+  fillFilters();
+  render();
+  renderFooter();
+}
+const on = (id, event, fn) => document.getElementById(id).addEventListener(event, fn);
+on("group", "change", (e) => { S.group = e.target.value; apply(); });
+on("fcat", "change", (e) => { S.cat = e.target.value; apply(); });
+on("fsrc", "change", (e) => { S.src = e.target.value; apply(); });
+on("fdet", "change", (e) => { S.det = e.target.value; apply(); });
+on("showpast", "click", () => { S.past = !S.past; apply(); });
+on("q", "input", (e) => { S.q = e.target.value; apply(); });
+on("reset", "click", () => { S = { ...DEFAULTS }; apply(); });
+on("palette", "change", (e) => {
+  document.documentElement.dataset.p = e.target.value;
+  try { localStorage.setItem("whatsrisky.palette", e.target.value); } catch (_) {}
+});
+window.addEventListener("hashchange", () => { readHash(); apply(); });
+
+try {
+  const saved = localStorage.getItem("whatsrisky.palette");
+  if (saved) { document.documentElement.dataset.p = saved; document.getElementById("palette").value = saved; }
+} catch (_) {}
+
+// A running scan rewrites this file, so offer a reload rather than pretending the
+// page is live. Scroll position survives it; the filters live in the URL already.
+if (R.status === "running") {
+  const box = document.getElementById("autobox");
+  box.hidden = false;
+  const toggle = document.getElementById("auto");
+  let saved = null;
+  try { saved = sessionStorage.getItem("whatsrisky.auto"); } catch (_) {}
+  toggle.checked = saved === null ? true : saved === "1";
+  const arm = () => {
+    if (!toggle.checked) return;
+    setTimeout(() => {
+      try { sessionStorage.setItem("whatsrisky.scroll", String(window.scrollY)); } catch (_) {}
+      location.reload();
+    }, 4000);
+  };
+  toggle.addEventListener("change", () => {
+    try { sessionStorage.setItem("whatsrisky.auto", toggle.checked ? "1" : "0"); } catch (_) {}
+    arm();
+  });
+  arm();
+  try {
+    const y = sessionStorage.getItem("whatsrisky.scroll");
+    if (y) window.scrollTo(0, Number(y));
+  } catch (_) {}
+}
+
+readHash();
+apply();
+</script>
+</body>
+</html>

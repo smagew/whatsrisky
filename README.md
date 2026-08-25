@@ -9,12 +9,13 @@ Four scanners, one severity scale, one document:
 | **Semgrep** | First-party source code (SAST) |
 | **Trivy** | Dependency CVEs, IaC / container misconfiguration, optionally secrets |
 | **gitleaks** | Hardcoded secrets in the working tree *and* in git history |
-| **Claude Code** | LLM review of logic, authn/authz and data flow — whole-project audit or the branch diff |
+| **An LLM** | Review of logic, authn/authz and data flow — whole-project audit or the branch diff |
 
-The report is the point. Not a wall of tool output: a document that says what to fix first, why it
-is exploitable, where it is, and — the part scanners usually hide — **what was not scanned at all**.
+The report is the point. Not a wall of tool output: a view that says what to fix first, why it is
+exploitable, where it is, what changed since last time, and — the part scanners usually hide —
+**what was not scanned at all**.
 
-![settings UI](docs/tui-settings.png)
+![HTML report](docs/viewer.png)
 
 ## Install
 
@@ -31,20 +32,42 @@ uv tool install --editable .
 ```
 
 The three scanners are separate binaries (`semgrep`, `trivy`, `gitleaks`) — `doctor` tells you what
-is missing and how to get it on your platform. The Claude pass additionally needs the `claude` CLI
-(`npm i -g @anthropic-ai/claude-code`) and is **off by default**: it spends tokens on your account.
+is missing and how to get it on your platform. The AI pass is **off by default**: it spends tokens on
+your account and sends code to a third party.
 
 ## Use
 
 ```bash
 whatsrisky ~/www/app                      # semgrep + trivy + gitleaks, reports in ./whatsrisky-reports
-whatsrisky ~/www/app --ai                 # add the Claude review pass (costs tokens)
+whatsrisky ~/www/app --open               # …and open the report when it is done
+whatsrisky ~/www/app --ai                 # add the AI review pass (costs tokens)
 whatsrisky ~/www/app --diff HEAD~1..HEAD  # only what this range changed
 whatsrisky ~/www/app --exclude legacy --exclude '*.generated.py'
 whatsrisky ~/www/app --min-severity HIGH --open
 whatsrisky ~/www/app --fail-on high       # exit 2 for CI when HIGH+ exists
 whatsrisky                                # no arguments: the settings UI
 ```
+
+### The report view
+
+`report.html` is one self-contained file — no network, no tooling, double-click it. It carries the
+findings and the data behind them, so it is both the view and the machine-readable record.
+
+- **Group** by severity, category, source, who found it, directory, or status.
+- **Filter** by severity, category, source, detector and free text; filters compose and live in the
+  URL hash, so a filtered view is a link you can paste to someone.
+- **Coverage gaps sit with the counts**, not in an appendix — a scanner that did not run means that
+  area is unscanned, and the verdict itself says `partial coverage (trivy did not run)`.
+- **Resolved findings** are one click away and never inflate the open counts.
+- Three themes, the same tokens as [whydiff](https://github.com/smagew/whydiff), so the two windows
+  read as one family.
+
+It is written **before the first scanner starts** and rewritten after each one, so you can open it
+while the scan is still running: it says `scanning — 1 of 3 done`, names the pending scanners, and
+never reports "clean" before it knows. The terminal UI enables **View report** (`v`) from the first
+second; **Open DOCX** (`d`) stays disabled until the DOCX is actually written and says why.
+
+![run screen](docs/tui-run.png)
 
 ### Settings UI
 
@@ -55,8 +78,6 @@ before you run (bad path, offline + `auto`, "the AI pass spends tokens"), and di
 settings cannot work.
 
 `r` runs the scan on a live-progress screen; `ctrl+s` saves the current form as a named **profile**.
-
-![run screen](docs/tui-run.png)
 
 Profiles work from the CLI too, so the UI and CI can share one configuration:
 
@@ -108,11 +129,82 @@ That last line is real: the AI pass runs with `--output-format stream-json`, so 
 the reviewer is opening instead of watching a spinner for four minutes. On a non-terminal (CI, pipes)
 the same information is printed as plain lines.
 
+### Rescans: what did we fix?
+
+A second scan compares itself against the previous report in the output directory
+and gives every finding a status:
+
+```
+vs myapp-20260824-231344: 3 new  ·  18 open  ·  5 resolved  ·  1 reintroduced  ·  2 moved
+```
+
+- **resolved** findings are carried into the new report, so "we fixed five things" is
+  visible rather than inferred from a shrinking total.
+- **moved** means a finding was tracked through code that changed place. A finding is
+  identified by three keys — its exact location, then the evidence itself, then its
+  location without the line — so moving a function to another file keeps its history
+  instead of reporting a fix plus a regression.
+- **reintroduced** is a finding that was fixed and came back.
+- resolved and accepted findings never inflate the counts, the risk score, the verdict
+  or the exit code. They are history and decisions, not open work.
+
+```bash
+whatsrisky ~/www/app                          # compares against the latest report automatically
+whatsrisky ~/www/app --baseline old.json      # compare against a specific one
+whatsrisky ~/www/app --no-compare             # don't
+```
+
+### Grouping axes
+
+Every finding carries the axes the view groups by, so a machine reading the JSON sees the same
+structure a person sees in the browser.
+
+A normalized `category` from a closed vocabulary (`injection.sql`, `secret`, `path-traversal`,
+`crypto`, `dependency`, `misconfiguration`, …) and a `source`
+(`source-code`, `dependency-manifest`, `git-history`, `iac`, `container`,
+`ci-config`). `detector` records who found it — tool, and for the AI pass the provider and model.
+
+The category comes from the strongest signal available, and the order matters: the scanner's own
+class, then unambiguous tokens in the rule id, then the artifact, then CWE, then fuzzy keywords.
+Rule ids outrank CWE deliberately — semgrep tags its own `injection.tainted-sql-string` rule with
+CWE-915, which would file a SQL injection under deserialization.
+
+### The AI pass, and who runs the model
+
+`--ai` adds an LLM reviewer that reads logic the pattern scanners cannot: authorization holes,
+data flow across files, business rules. It is off by default and it is never implicit.
+
+Two backends today, and the difference is not cosmetic:
+
+| `--ai-provider` | Sees | Can review a diff |
+| --- | --- | --- |
+| `claude-cli` (default) | **explores the repository itself** with read tools | yes, via the `security-review` skill |
+| `openai` | only the files we send it, within `--ai-context-bytes` | no — it has no access to git |
+
+An agentic backend decides what to open and follows a taint through the codebase; an API backend is
+handed a slice we chose. Those are different analyses of different strength, so the report records
+which one ran — `openai · gpt-5 · was given a fixed context … saw 14 file(s)` — instead of
+presenting them as equivalent. `detector` on every finding carries the provider and the model.
+
+```bash
+export OPENAI_API_KEY=…
+whatsrisky ~/www/app --ai-provider openai --model gpt-5
+whatsrisky ~/www/app --ai --model sonnet          # claude-cli, cheaper model
+whatsrisky ~/www/app --ai --ai-mode review        # the branch diff (agentic backends only)
+```
+
+When an API backend cannot do something, it says so rather than returning a confident empty result:
+asking `openai` for `--ai-mode review` fails with "it has no access to git — use `--ai-mode full`,
+or `--ai-provider claude-cli`".
+
 ### Flags that matter
 
-- `--ai` — add the Claude pass. Naming `--model` or `--claude-mode` implies it.
-- `--model opus|sonnet|haiku|<model-id>` — default `opus`. `sonnet` is several times cheaper.
-- `--claude-mode full|review|both` — audit the whole project, review the diff, or both.
+- `--ai` — add the AI pass. Naming `--ai-provider`, `--model` or `--ai-mode` implies it.
+- `--ai-provider claude-cli|openai` — who runs the model. Keys come from the environment
+  (`OPENAI_API_KEY`, and `OPENAI_BASE_URL` to point at a compatible endpoint).
+- `--model <id>` — free-form; blank means the backend's own default.
+- `--ai-mode full|review|both` — audit the whole project, review the diff, or both.
+- `--ai-context-bytes N` — how much source a non-agentic backend is shown (default 240000).
 - `--diff HEAD~1..HEAD` — scope to a git range (see the honesty note below).
 - `--tools semgrep,trivy` / `--skip gitleaks` — pick scanners.
 - `--min-severity HIGH`, `--max-per-severity 25` — trim the document (JSON keeps everything).
@@ -120,6 +212,7 @@ the same information is printed as plain lines.
 - `--exclude legacy --exclude '*.min.js'` — repeatable; `--no-default-excludes` to keep vendored
   code in scope; `--show-excludes` to print the effective list.
 - `--offline` — no network; Trivy skips its DB update and Semgrep falls back to `p/security-audit`.
+- `--baseline FILE` / `--no-compare` — control the rescan comparison.
 - `--quiet` / `--json-stdout` — machine-readable output, see **Embedding** below.
 
 ## The report
@@ -133,7 +226,8 @@ the same information is printed as plain lines.
    CWE/OWASP/CVSS, what is wrong, code evidence, how to fix, references, and a stable id.
 5. **Appendix** — AI reviewer summary and scanner diagnostics.
 
-`--format docx,md,json` picks the outputs; all three by default.
+`--format html,docx,md,json` picks the outputs; all four by default. The HTML is the view, the DOCX
+is what you hand to someone, the JSON is what other tools read.
 
 ## Embedding
 
@@ -160,8 +254,12 @@ whatsrisky /srv/app --diff main...HEAD --json-stdout > findings.json
 ```
 
 The shape is a versioned contract: [`schema/report.schema.json`](schema/report.schema.json).
-`schema_version` is bumped on any breaking change, and every finding carries a stable `fingerprint`
-suitable as a suppression key.
+`schema_version` is bumped on any breaking change, and every finding carries stable identity keys
+suitable as suppression or correlation keys.
+
+The JSON is also written **while the scan runs**: it exists within a second of starting, carries
+`status: "running"` and per-scanner `pending`/`running` states, and is rewritten atomically after
+each scanner finishes. A viewer can open it mid-scan instead of waiting for the last tool.
 
 ## Honesty notes
 
@@ -206,9 +304,14 @@ secret scanners or GitHub push protection.
 
 - `whatsrisky/core.py` — `ScanOptions`, `run_scan()`, tool probing. No terminal, no UI.
 - `whatsrisky/runners/` — one module per scanner, each returning normalized `Finding` objects.
-- `whatsrisky/report/` — DOCX and Markdown writers.
+  `runners/ai.py` owns the prompts and the JSON contract with the model; `whatsrisky/ai/` owns who
+  runs it (`claude_cli.py`, `openai_api.py`, and `context.py` for backends that cannot read the repo).
+- `whatsrisky/report/` — HTML, DOCX and Markdown writers. `templates/viewer.html` is the whole
+  viewer in one file (CSS + JS), with the report JSON inlined at write time.
 - `whatsrisky/ui.py` — Textual settings + progress UI. `whatsrisky/settings.py` — persisted profiles.
 - `whatsrisky/progress.py` — one progress model, rendered by both the CLI and the UI.
+- `whatsrisky/categories.py` — CWE → normalized category. `whatsrisky/compare.py` — rescan
+  correlation (what was fixed, what moved, what came back).
 - `schema/report.schema.json` — the JSON contract for other tools.
 
 ## License

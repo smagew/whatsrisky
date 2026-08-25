@@ -31,12 +31,12 @@ from textual.widgets.selection_list import Selection
 
 from . import __version__, settings
 from .util import open_file
+from .ai import PROVIDER_CHOICES, make_backend
 from .core import (
     ALL_TOOLS,
     DEFAULT_EXCLUDES,
     FAIL_ON_CHOICES,
     FORMAT_CHOICES,
-    MODEL_CHOICES,
     ScanOptions,
     ScanOutcome,
     probe_tools,
@@ -69,7 +69,8 @@ class RunScreen(Screen):
 
     BINDINGS = [
         ("escape", "back", "Back to settings"),
-        ("o", "open_report", "Open DOCX"),
+        ("v", "view_report", "View report"),
+        ("d", "open_docx", "Open DOCX"),
         ("q", "quit_app", "Quit"),
     ]
 
@@ -78,6 +79,7 @@ class RunScreen(Screen):
         self.options = options
         self.outcome: ScanOutcome | None = None
         self.progress = ProgressModel()
+        self.live_report: str = ""   # readable while the scan runs
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -88,8 +90,9 @@ class RunScreen(Screen):
             yield RichLog(id="run-log", markup=True, wrap=True, highlight=False)
             yield Static("", id="run-summary")
             with Horizontal(id="run-buttons"):
+                yield Button("View report", id="view", variant="success", disabled=True)
+                yield Button("Open DOCX", id="open", disabled=True)
                 yield Button("Back to settings", id="back", variant="primary")
-                yield Button("Open DOCX", id="open", variant="success", disabled=True)
                 yield Button("Quit", id="quit", variant="error")
         yield Footer()
 
@@ -139,6 +142,11 @@ class RunScreen(Screen):
             log.write(line)
             if payload.get("message") and payload["status"] != "ok":
                 log.write(f"  [dim]{payload['message'][:300]}[/]")
+        elif kind == "live":
+            self.live_report = payload.get("html") or payload.get("json") or ""
+            if self.live_report:
+                self.query_one("#view", Button).disabled = False
+                log.write("[dim]live report ready — press v to open it any time[/]")
         elif kind == "report":
             for path in payload["paths"]:
                 log.write(f"[green]report[/] {path}")
@@ -177,8 +185,13 @@ class RunScreen(Screen):
             log.write(
                 f"[dim]{outcome.report.excluded_count} finding(s) dropped by exclusions[/]"
             )
-        if any(p.suffix == ".docx" for p in outcome.written):
+        docx = next((p for p in outcome.written if p.suffix == ".docx"), None)
+        if docx:
             self.query_one("#open", Button).disabled = False
+        else:
+            # Say why instead of leaving a dead button: the DOCX is written once, at
+            # the end, and only when the format was asked for.
+            log.write("[dim]no DOCX in this run — add docx to the formats to get one[/]")
         self.notify(f"{len(report.findings)} findings · {report.verdict()}", timeout=8)
 
     # --- actions ------------------------------------------------------
@@ -188,20 +201,38 @@ class RunScreen(Screen):
     def action_quit_app(self) -> None:
         self.app.exit(self.outcome.exit_code if self.outcome else 0)
 
-    def action_open_report(self) -> None:
+    def action_view_report(self) -> None:
+        """Open the HTML view - available while the scan is still running."""
+        target = self.live_report
+        if not target and self.outcome:
+            html = next((p for p in self.outcome.written if p.suffix == ".html"), None)
+            target = str(html) if html else ""
+        if not target:
+            self.notify("no viewable report in this run (add html to the formats)", severity="warning")
+        elif not open_file(target):
+            self.notify("could not open the file on this platform", severity="warning")
+
+    def action_open_docx(self) -> None:
         if not self.outcome:
+            self.notify("the DOCX is written when the scan finishes", severity="warning")
             return
         docx = next((p for p in self.outcome.written if p.suffix == ".docx"), None)
-        if docx and not open_file(docx):
+        if not docx:
+            self.notify("no DOCX in this run — add docx to the formats", severity="warning")
+        elif not open_file(docx):
             self.notify("could not open the file on this platform", severity="warning")
 
     @on(Button.Pressed, "#back")
     def _back(self) -> None:
         self.action_back()
 
+    @on(Button.Pressed, "#view")
+    def _view(self) -> None:
+        self.action_view_report()
+
     @on(Button.Pressed, "#open")
     def _open(self) -> None:
-        self.action_open_report()
+        self.action_open_docx()
 
     @on(Button.Pressed, "#quit")
     def _quit(self) -> None:
@@ -256,36 +287,34 @@ class SettingsScreen(Screen):
                     for name in ALL_TOOLS:
                         yield Checkbox(name, value=name in opts.tools, id=f"tool-{name}")
 
-                yield Label("[b]Claude review[/]", classes="section")
-                yield Label("model", classes="field")
+                yield Label("[b]AI review[/]", classes="section")
+                yield Label("provider", classes="field")
                 yield Select(
-                    [(m, m) for m in MODEL_CHOICES],
-                    value=opts.model if opts.model in MODEL_CHOICES else MODEL_CHOICES[0],
+                    [
+                        ("claude-cli — reads the repo itself", "claude-cli"),
+                        ("openai — api, sees only what we send", "openai"),
+                    ],
+                    value=opts.ai_provider if opts.ai_provider in PROVIDER_CHOICES else "claude-cli",
                     allow_blank=False,
-                    id="model",
+                    id="ai-provider",
                 )
-                yield Input(
-                    value="" if opts.model in MODEL_CHOICES else opts.model,
-                    placeholder="or a full model id, e.g. claude-opus-5 (overrides)",
-                    id="model-custom",
-                )
+                yield Label("model (blank = the backend's default)", classes="field")
+                yield Input(value=opts.model, placeholder="opus · gpt-5 · a full model id", id="model")
                 yield Label("mode", classes="field")
                 yield Select(
                     [
                         ("full — audit the whole project", "full"),
-                        ("review — security-review on the branch diff", "review"),
+                        ("review — the branch diff (agentic backends only)", "review"),
                         ("both", "both"),
                     ],
-                    value=opts.claude_mode,
+                    value=opts.ai_mode,
                     allow_blank=False,
-                    id="claude-mode",
+                    id="ai-mode",
                 )
                 yield Label("timeout per pass (s) / max findings", classes="field")
                 with Horizontal(classes="pair"):
-                    yield Input(value=str(opts.claude_timeout), type="integer", id="claude-timeout")
-                    yield Input(
-                        value=str(opts.claude_max_findings), type="integer", id="claude-max-findings"
-                    )
+                    yield Input(value=str(opts.ai_timeout), type="integer", id="ai-timeout")
+                    yield Input(value=str(opts.ai_max_findings), type="integer", id="ai-max-findings")
 
                 yield Label("[b]Output[/]", classes="section")
                 yield Label("formats", classes="field")
@@ -451,7 +480,6 @@ class SettingsScreen(Screen):
             return default
 
     def collect(self) -> ScanOptions:
-        custom_model = self.query_one("#model-custom", Input).value.strip()
         max_per = self.query_one("#max-per-severity", Input).value.strip()
         return ScanOptions(
             path=self.query_one("#path", Input).value.strip(),
@@ -460,10 +488,11 @@ class SettingsScreen(Screen):
             formats=[f for f in FORMAT_CHOICES if self.query_one(f"#fmt-{f}", Checkbox).value],
             out_dir=self.query_one("#out-dir", Input).value.strip(),
             out=self.query_one("#out", Input).value.strip(),
-            model=custom_model or str(self.query_one("#model", Select).value),
-            claude_mode=str(self.query_one("#claude-mode", Select).value),
-            claude_timeout=self._int("claude-timeout", 3600),
-            claude_max_findings=self._int("claude-max-findings", 40),
+            ai_provider=str(self.query_one("#ai-provider", Select).value),
+            model=self.query_one("#model", Input).value.strip(),
+            ai_mode=str(self.query_one("#ai-mode", Select).value),
+            ai_timeout=self._int("ai-timeout", 3600),
+            ai_max_findings=self._int("ai-max-findings", 40),
             semgrep_configs=_csv(self.query_one("#semgrep-configs", Input).value) or ["auto"],
             trivy_scanners=self.query_one("#trivy-scanners", Input).value.strip() or "vuln,misconfig",
             gitleaks_mode=str(self.query_one("#gitleaks-mode", Select).value),
@@ -487,14 +516,13 @@ class SettingsScreen(Screen):
         self.query_one("#diff", Input).value = opts.diff
         for fmt in FORMAT_CHOICES:
             self.query_one(f"#fmt-{fmt}", Checkbox).value = fmt in opts.formats
-        if opts.model in MODEL_CHOICES:
-            self.query_one("#model", Select).value = opts.model
-            self.query_one("#model-custom", Input).value = ""
-        else:
-            self.query_one("#model-custom", Input).value = opts.model
-        self.query_one("#claude-mode", Select).value = opts.claude_mode
-        self.query_one("#claude-timeout", Input).value = str(opts.claude_timeout)
-        self.query_one("#claude-max-findings", Input).value = str(opts.claude_max_findings)
+        self.query_one("#ai-provider", Select).value = (
+            opts.ai_provider if opts.ai_provider in PROVIDER_CHOICES else "claude-cli"
+        )
+        self.query_one("#model", Input).value = opts.model
+        self.query_one("#ai-mode", Select).value = opts.ai_mode
+        self.query_one("#ai-timeout", Input).value = str(opts.ai_timeout)
+        self.query_one("#ai-max-findings", Input).value = str(opts.ai_max_findings)
         self.query_one("#out-dir", Input).value = opts.out_dir
         self.query_one("#out", Input).value = opts.out
         self.query_one("#open-report", Checkbox).value = opts.open_report
@@ -528,9 +556,17 @@ class SettingsScreen(Screen):
             notes.append("[yellow]•[/] claude needs network even with --offline")
         if opts.offline and self.collect().semgrep_configs == ["auto"]:
             notes.append("[yellow]•[/] offline: semgrep switches to p/security-audit")
-        if "claude" in opts.tools:
-            notes.append("[yellow]•[/] claude pass spends tokens on your account")
-            if opts.model == "opus":
+        if "ai" in opts.tools:
+            notes.append("[yellow]•[/] the ai pass spends tokens on your account")
+            backend = make_backend(opts.ai_provider, Path(opts.path or "."), Path("."))
+            ready, why = backend.available()
+            if not ready:
+                notes.append(f"[red]•[/] {why}")
+            if not backend.agentic:
+                if opts.ai_mode in ("review", "both"):
+                    notes.append(f"[red]•[/] {opts.ai_provider} cannot review a diff — use full")
+                notes.append("[dim]•[/] this backend sees only the files we send it")
+            elif (opts.model or backend.default_model) == "opus":
                 notes.append("[dim]•[/] opus is the priciest pass; sonnet is ~5x cheaper")
         if opts.diff and "trivy" in opts.tools:
             notes.append("[dim]•[/] trivy ignores --diff (CVEs are manifest-wide)")

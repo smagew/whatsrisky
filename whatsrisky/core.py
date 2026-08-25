@@ -16,12 +16,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from .compare import correlate, find_baseline, load_report
 from .models import SEVERITY_ORDER, ScanReport, Severity, ToolResult
-from .report import write_docx, write_markdown
+from .report import write_docx, write_html, write_markdown
+from .ai import PROVIDER_CHOICES
 from .runners import ALL_RUNNERS, ScanConfig
-from .util import changed_files, git_info, path_excluded, slugify, which
+from .util import changed_files, git_info, path_excluded, slugify
 
-ALL_TOOLS = ["semgrep", "trivy", "gitleaks", "claude"]
+ALL_TOOLS = ["semgrep", "trivy", "gitleaks", "ai"]
+# `claude` was the tool's name before the pass became provider-neutral.
+TOOL_ALIASES = {"claude": "ai"}
 # claude is NOT a default: it costs the caller money and needs network. Opt in with --ai.
 DEFAULT_TOOLS = ["semgrep", "trivy", "gitleaks"]
 SCHEMA_VERSION = 1
@@ -42,15 +46,15 @@ DEFAULT_EXCLUDES = [
     ".idea", ".vscode", ".DS_Store",
     "whatsrisky-reports",
 ]
-MODEL_CHOICES = ["opus", "sonnet", "haiku"]
-FORMAT_CHOICES = ["docx", "md", "json"]
+MODEL_CHOICES = ["opus", "sonnet", "haiku"]   # claude-cli aliases, for the UI's convenience
+FORMAT_CHOICES = ["html", "docx", "md", "json"]
 FAIL_ON_CHOICES = ["none", "critical", "high", "medium", "low", "info"]
 
 TOOL_COVERAGE = {
     "semgrep": "First-party source code (SAST)",
     "trivy": "Dependency CVEs, IaC misconfig",
     "gitleaks": "Secrets in tree and git history",
-    "claude": "LLM review of logic and authz",
+    "ai": "LLM review of logic and authz",
 }
 
 
@@ -64,10 +68,12 @@ class ScanOptions:
     formats: list[str] = field(default_factory=lambda: list(FORMAT_CHOICES))
     out_dir: str = ""
     out: str = ""
-    model: str = "opus"
-    claude_mode: str = "full"
-    claude_timeout: int = 3600
-    claude_max_findings: int = 40
+    ai_provider: str = "claude-cli"
+    model: str = ""              # empty means the backend's default
+    ai_mode: str = "full"
+    ai_timeout: int = 3600
+    ai_max_findings: int = 40
+    ai_context_bytes: int = 240_000
     semgrep_configs: list[str] = field(default_factory=lambda: ["auto"])
     trivy_scanners: str = "vuln,misconfig"
     gitleaks_mode: str = "auto"
@@ -82,10 +88,13 @@ class ScanOptions:
     work_dir: str = ""
     keep_work: bool = False
     open_report: bool = False
+    baseline: str = ""        # report to compare against; "" = the latest in out_dir
+    compare: bool = True
 
     def normalized(self) -> "ScanOptions":
         """Resolve the combinations that cannot work as configured."""
         opts = ScanOptions(**asdict(self))
+        opts.tools = [TOOL_ALIASES.get(t, t) for t in opts.tools]
         opts.tools = [t for t in ALL_TOOLS if t in opts.tools]
         opts.formats = [f for f in FORMAT_CHOICES if f in opts.formats]
         if opts.offline and opts.semgrep_configs == ["auto"]:
@@ -117,9 +126,9 @@ class ScanOptions:
         parts = ["whatsrisky", self.path or "."]
         if self.diff:
             parts += ["--diff", self.diff]
-        if "claude" in self.tools:
+        if "ai" in self.tools:
             parts.append("--ai")
-        tool_set = [t for t in self.tools if t != "claude"]
+        tool_set = [t for t in self.tools if t != "ai"]
         if sorted(tool_set) != sorted(DEFAULT_TOOLS):
             parts += ["--tools", ",".join(tool_set)] if tool_set else ["--tools", "none"]
         if sorted(self.formats) != sorted(FORMAT_CHOICES):
@@ -128,15 +137,19 @@ class ScanOptions:
             parts += ["--out-dir", self.out_dir]
         if self.out:
             parts += ["--out", self.out]
-        if "claude" in self.tools:
-            if self.model != "opus":
+        if "ai" in self.tools:
+            if self.ai_provider != "claude-cli":
+                parts += ["--ai-provider", self.ai_provider]
+            if self.model:
                 parts += ["--model", self.model]
-            if self.claude_mode != "full":
-                parts += ["--claude-mode", self.claude_mode]
-            if self.claude_timeout != 3600:
-                parts += ["--claude-timeout", str(self.claude_timeout)]
-            if self.claude_max_findings != 40:
-                parts += ["--claude-max-findings", str(self.claude_max_findings)]
+            if self.ai_mode != "full":
+                parts += ["--ai-mode", self.ai_mode]
+            if self.ai_timeout != 3600:
+                parts += ["--ai-timeout", str(self.ai_timeout)]
+            if self.ai_max_findings != 40:
+                parts += ["--ai-max-findings", str(self.ai_max_findings)]
+            if self.ai_context_bytes != 240_000:
+                parts += ["--ai-context-bytes", str(self.ai_context_bytes)]
         if self.semgrep_configs != ["auto"]:
             for cfg in self.semgrep_configs:
                 parts += ["--semgrep-config", cfg]
@@ -160,6 +173,10 @@ class ScanOptions:
             parts += ["--max-per-severity", str(self.max_per_severity)]
         if self.fail_on != "none":
             parts += ["--fail-on", self.fail_on]
+        if self.baseline:
+            parts += ["--baseline", self.baseline]
+        if not self.compare:
+            parts.append("--no-compare")
         if self.keep_work:
             parts.append("--keep-work")
         if self.open_report:
@@ -173,18 +190,48 @@ def probe_tools() -> list[dict]:
     out: list[dict] = []
     for name in ALL_TOOLS:
         runner = ALL_RUNNERS[name](config)
-        path = which(runner.binary)
+        # Not every runner is a binary on PATH: the AI pass asks its backend.
+        found = runner.available()
         out.append(
             {
                 "name": name,
                 "binary": runner.binary,
-                "found": bool(path),
-                "version": runner.version() if path else "",
-                "hint": runner.install_hint,
+                "found": found,
+                "version": runner.version() if found else "",
+                "hint": runner.install_hint if runner.binary else runner.unavailable_reason(),
                 "covers": TOOL_COVERAGE.get(name, ""),
             }
         )
     return out
+
+
+class _LiveWriter:
+    """Rewrites the machine-readable artifacts while the scan runs.
+
+    JSON is cheap and a viewer can reload it, so it is refreshed on every tool
+    transition. DOCX is written once at the end: it is the deliverable, not the
+    working view.
+    """
+
+    def __init__(self, report: ScanReport, out_dir: Path, base: str, formats: list[str]):
+        self.report = report
+        self.json_path = out_dir / f"{base}.json" if "json" in formats else None
+        self.html_path = out_dir / f"{base}.html" if "html" in formats else None
+
+    def write(self) -> None:
+        if self.json_path is not None:
+            try:
+                payload = json.dumps(self.report.to_dict(), indent=2, ensure_ascii=False)
+                temporary = self.json_path.with_suffix(".json.part")
+                temporary.write_text(payload, encoding="utf-8")
+                temporary.replace(self.json_path)  # atomic: never half a report
+            except OSError:
+                pass
+        if self.html_path is not None:
+            try:
+                write_html(self.report, self.html_path)
+            except OSError:
+                pass
 
 
 @dataclass
@@ -215,6 +262,10 @@ def validate(options: ScanOptions) -> list[str]:
     unknown = [t for t in options.tools if t not in ALL_RUNNERS]
     if unknown:
         problems.append(f"Unknown scanner(s): {', '.join(unknown)}")
+    if options.ai_provider not in PROVIDER_CHOICES:
+        problems.append(
+            f"Unknown ai provider {options.ai_provider!r}; known: {', '.join(PROVIDER_CHOICES)}"
+        )
     if not options.formats:
         problems.append("No output format selected.")
     return problems
@@ -297,10 +348,12 @@ def build_scan_config(
         trivy_offline=options.offline,
         gitleaks_mode=options.gitleaks_mode,
         gitleaks_timeout=min(options.timeout, 900),
-        claude_model=options.model,
-        claude_mode=options.claude_mode,
-        claude_timeout=options.claude_timeout,
-        claude_max_findings=options.claude_max_findings,
+        ai_provider=options.ai_provider,
+        ai_model=options.model,
+        ai_mode=options.ai_mode,
+        ai_timeout=options.ai_timeout,
+        ai_max_findings=options.ai_max_findings,
+        ai_context_bytes=options.ai_context_bytes,
         exclude=list(excludes) if excludes is not None else options.effective_excludes(),
         min_severity=options.min_severity,
     )
@@ -395,7 +448,7 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
                 "message": f"diff {options.diff}: {len(scope_paths)} changed file(s)",
                 "tools": options.tools,
                 "model": options.model,
-                "claude_mode": options.claude_mode,
+                "ai_mode": options.ai_mode,
             },
         )
         if not scope_paths:
@@ -405,8 +458,10 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
     config = build_scan_config(options, target, work_dir, scope_paths, excludes)
     commit, branch = git_info(target)
     report = ScanReport(
+        excludes=excludes,
         project_path=str(target),
         project_name=target.name,
+        scan_id=base,
         started_at=stamp.strftime("%Y-%m-%d %H:%M:%S"),
         git_commit=commit,
         git_branch=branch,
@@ -419,14 +474,52 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
             "message": f"scanning {target}",
             "tools": options.tools,
             "model": options.model,
-            "claude_mode": options.claude_mode,
+            "ai_mode": options.ai_mode,
         },
     )
 
+    # The baseline is picked before we write anything, so this run's own report can
+    # never become its own baseline.
+    baseline_data: dict | None = None
+    baseline_path = ""
+    if options.compare:
+        if options.baseline:
+            candidate = Path(options.baseline).expanduser()
+            baseline_data = load_report(candidate)
+            if baseline_data is None:
+                raise ValueError(f"not a whatsrisky report: {candidate}")
+            baseline_path = str(candidate)
+        else:
+            found = find_baseline(out_dir)
+            if found is not None:
+                baseline_data = load_report(found)
+                baseline_path = str(found)
+
+    # A report exists from the first second, so a viewer can open it mid-scan.
+    report.status = "running"
+    for name in options.tools:
+        report.tools.append(ToolResult(name=name, status="pending"))
+    live = _LiveWriter(report, out_dir, base, options.formats)
+    live.write()
+    # A front end can open the report from here on: it exists and it says it is running.
+    on_event(
+        "live",
+        {
+            "html": str(live.html_path) if live.html_path else "",
+            "json": str(live.json_path) if live.json_path else "",
+        },
+    )
+
+    def relay(kind: str, payload: dict) -> None:
+        on_event(kind, payload)
+        if kind in ("tool_start", "tool_done"):
+            live.write()
+
     started = time.monotonic()
-    report.tools = _run_tools(options.tools, config, options.jobs, on_event)
+    report.tools = _run_tools(options.tools, config, options.jobs, relay)
     report.duration_s = time.monotonic() - started
     report.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    report.status = "partial" if any(not tool.ok for tool in report.tools) else "complete"
 
     floor = Severity.parse(options.min_severity, Severity.INFO)
     seen: set[str] = set()
@@ -441,18 +534,21 @@ def run_scan(options: ScanOptions, on_event: Callback | None = None) -> ScanOutc
                 continue
             seen.add(finding.fingerprint)
             report.findings.append(finding)
-    report.excludes = excludes
+
+    if baseline_data is not None:
+        correlate(report, baseline_data, baseline_path)
 
     written: list[Path] = []
+    live.write()
+    if "html" in options.formats:
+        written.append(out_dir / f"{base}.html")
     if "docx" in options.formats:
         path = Path(options.out).expanduser().resolve() if options.out else out_dir / f"{base}.docx"
         written.append(write_docx(report, path, options.max_per_severity))
     if "md" in options.formats:
         written.append(write_markdown(report, out_dir / f"{base}.md"))
     if "json" in options.formats:
-        json_path = out_dir / f"{base}.json"
-        json_path.write_text(json.dumps(report.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
-        written.append(json_path)
+        written.append(out_dir / f"{base}.json")
     on_event("report", {"paths": [str(p) for p in written]})
 
     if not options.keep_work and work_dir.name.startswith(".work-"):

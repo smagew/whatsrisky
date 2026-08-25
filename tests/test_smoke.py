@@ -123,15 +123,15 @@ def test_options_command_line_roundtrip():
     from whatsrisky.core import ScanOptions
 
     opts = ScanOptions(
-        path="/tmp/p", tools=["semgrep", "trivy"], model="sonnet", claude_mode="review",
+        path="/tmp/p", tools=["semgrep", "trivy"], model="sonnet", ai_mode="review",
         min_severity="HIGH", fail_on="high", exclude=["node_modules"], jobs=2,
     )
     cmd = opts.command_line()
     for fragment in ("--tools semgrep,trivy", "--min-severity HIGH", "--fail-on high",
                      "--exclude node_modules", "--jobs 2"):
         assert fragment in cmd
-    # claude flags are omitted when claude is not selected
-    assert "--model" not in cmd and "--claude-mode" not in cmd
+    # AI flags are omitted when the AI pass is not selected
+    assert "--model" not in cmd and "--ai-mode" not in cmd
     assert ScanOptions.from_json(opts.to_json()) == opts
 
 
@@ -176,11 +176,11 @@ def test_ui_collects_and_previews(tmp_path, monkeypatch):
             await pilot.pause()
             screen = app.screen
             assert isinstance(screen, SettingsScreen)
-            screen.query_one("#tool-claude", Checkbox).value = False
+            screen.query_one("#tool-ai", Checkbox).value = False
             screen.query_one("#min-severity", Select).value = "HIGH"
             await pilot.pause()
             collected = screen.collect()
-            assert "claude" not in collected.tools
+            assert "ai" not in collected.tools
             assert collected.min_severity == "HIGH"
             assert "--min-severity HIGH" in str(screen.query_one("#cmd-panel").content)
             screen.apply(ScanOptions(path=str(tmp_path), model="claude-opus-5", fail_on="high"))

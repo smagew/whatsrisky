@@ -1,43 +1,24 @@
-"""Claude Code as a security reviewer (headless), normalized into findings.
+"""The AI review pass, normalized into findings.
 
-Two passes are available:
-  * full   - whole-project security audit driven by our own audit prompt
-  * review - the built-in `/security-review` slash command (diff of the branch)
-Both are asked to emit strict JSON; `review` output is structured by a second,
-cheaper conversion call because the slash command answers in prose.
+Which model runs it is a backend choice (`whatsrisky/ai/`), not this module's
+business. What this module owns: the prompts, the strict-JSON contract with the
+model, repairing the JSON it gets back, and turning the answer into findings that
+sit on the same severity scale as every scanner's.
+
+Two passes:
+  * full   - whole-project audit driven by our own prompt
+  * review - the branch diff, via the security-review skill on an agentic backend
+Both must answer with JSON; a malformed answer is repaired locally, then reshaped
+by one cheap follow-up call rather than lost.
 """
 
 from __future__ import annotations
 
-import json
-
+from ..ai import VENDOR, make_backend
+from ..ai import context as ai_context
 from ..models import Finding, Severity, ToolResult
-from ..util import extract_json, read_snippet, relative, run_streaming, truncate
+from ..util import extract_json, read_snippet, relative, truncate
 from .base import Runner
-
-READ_ONLY_TOOLS = ",".join(
-    [
-        "Read",
-        "Grep",
-        "Glob",
-        "Skill",
-        "TodoWrite",
-        "Bash(git merge-base:*)",
-        "Bash(git ls-files:*)",
-        "Bash(git log:*)",
-        "Bash(git diff:*)",
-        "Bash(git status:*)",
-        "Bash(git show:*)",
-        "Bash(git branch:*)",
-        "Bash(git rev-parse:*)",
-        "Bash(rg:*)",
-        "Bash(ls:*)",
-        "Bash(find:*)",
-        "Bash(cat:*)",
-        "Bash(head:*)",
-        "Bash(wc:*)",
-    ]
-)
 
 SCHEMA_BLOCK = """{
   "summary": "2-4 sentence security posture summary of this codebase",
@@ -114,124 +95,73 @@ JSON shape:
 """
 
 
-def _describe_tool_use(block: dict) -> str:
-    """`Read app.py` reads better than a raw tool_use payload."""
-    name = block.get("name") or "tool"
-    args = block.get("input") or {}
-    for key in ("file_path", "path", "pattern", "command", "query", "notebook_path"):
-        value = args.get(key)
-        if value:
-            return f"{name}: {str(value)[:120]}"
-    return name
-
-
-def _final_result(stream: str) -> dict | None:
-    """Pick the terminal `result` event out of a stream-json transcript."""
-    payload: dict | None = None
-    for line in (stream or "").splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(event, dict) and event.get("type") == "result":
-            payload = event
-    return payload
-
-
-class ClaudeRunner(Runner):
-    name = "claude"
-    binary = "claude"
+class AiRunner(Runner):
+    name = "ai"
+    binary = ""            # availability is the backend's business, not a PATH lookup
     category = "AI review"
-    install_hints = {"default": "npm install -g @anthropic-ai/claude-code"}
+    install_hints = {"default": "see the --ai-provider options"}
 
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, config, on_progress=None):
+        super().__init__(config, on_progress)
+        self.backend = make_backend(config.ai_provider, config.target, config.work_dir)
+        self.model = config.ai_model or self.backend.default_model
         self.summary = ""
         self.coverage = ""
         self.cost_usd = 0.0
         self.turns = 0
+        self.context_note = ""
+        self._context_text = ""
+        self.notes: list[str] = []
+
+    # --- availability -------------------------------------------------
+    def available(self) -> bool:
+        return self.backend.available()[0]
+
+    def unavailable_reason(self) -> str:
+        return self.backend.available()[1] or f"the {self.backend.name} backend is unavailable"
 
     def version(self) -> str:
-        from ..util import tool_version
+        return f"{self.backend.version()} · model {self.model}"
 
-        return f"claude {tool_version(self.binary)} (model: {self.config.claude_model})"
-
-    # --- claude invocation --------------------------------------------
-    def _stream_line(self, line: str) -> None:
-        """Turn one stream-json event into a progress message."""
-        line = line.strip()
-        if not line.startswith("{"):
-            return
-        try:
-            event = json.loads(line)
-        except ValueError:
-            return
-        if event.get("type") != "assistant":
-            return
-        for block in event.get("message", {}).get("content", []) or []:
-            kind = block.get("type")
-            if kind == "tool_use":
-                self.progress(_describe_tool_use(block))
-            elif kind == "text":
-                text = (block.get("text") or "").strip().splitlines()
-                if text and not text[0].lstrip().startswith(("{", "[")):
-                    self.progress(text[0])
-
-    def _invoke(self, prompt: str, model: str, label: str) -> tuple[str, str, str]:
+    # --- asking the model ---------------------------------------------
+    def _prepare_context(self) -> str:
+        """Build the context once; agentic backends need none."""
+        if self.backend.agentic:
+            return ""
         cfg = self.config
-        argv = [
-            self.binary,
-            "-p",
-            prompt,
-            "--model",
-            model,
-            # stream-json reports each step as it happens; json would only speak at the end.
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--allowed-tools",
-            READ_ONLY_TOOLS,
-        ]
-        self.progress(f"{label} pass: starting {model}")
-        res = run_streaming(
-            argv,
-            cwd=cfg.target,
-            timeout=cfg.claude_timeout,
-            on_stdout=self._stream_line,
+        text, included, skipped = ai_context.build(
+            cfg.target, cfg.exclude, cfg.scope_paths or None, cfg.ai_context_bytes
         )
-        raw_path = cfg.work_dir / f"claude-{label}.raw.jsonl"
-        raw_path.write_text(res.stdout or "", encoding="utf-8")
-        if res.timed_out:
-            raise RuntimeError(f"claude {label} pass timed out after {cfg.claude_timeout}s")
+        self.context_note = (
+            f"the {self.backend.name} backend cannot read the repository itself, so it saw "
+            f"{len(included)} file(s)"
+            + (f" and {skipped} were left out for size" if skipped else "")
+        )
+        self.notes.append(self.context_note)
+        self.progress(f"prepared {len(included)} file(s) of context")
+        return text
 
-        payload = _final_result(res.stdout)
-        if isinstance(payload, dict) and "result" in payload:
-            if payload.get("is_error"):
-                raise RuntimeError(f"claude {label} pass failed: {truncate(str(payload.get('result')), 400)}")
-            self.cost_usd += float(payload.get("total_cost_usd") or 0.0)
-            self.turns += int(payload.get("num_turns") or 0)
-            text = str(payload.get("result") or "")
-            if not text.strip():
-                raise RuntimeError(
-                    f"claude {label} pass returned an empty answer after "
-                    f"{payload.get('num_turns', 0)} turn(s)"
-                )
-        else:
-            text = res.stdout or ""
-            if not text.strip():
-                raise RuntimeError(
-                    f"claude {label} pass returned nothing (exit {res.returncode}): "
-                    f"{truncate(res.stderr, 400)}"
-                )
-        return text, res.command, res.stderr
+    def _invoke(self, prompt: str, label: str) -> tuple[str, str]:
+        """Run one pass. Returns (answer text, a description of the call)."""
+        cfg = self.config
+        self.progress(f"{label} pass on {self.backend.name} · {self.model}")
+        answer = self.backend.ask(
+            prompt,
+            model=self.model,
+            timeout=cfg.ai_timeout,
+            on_progress=self.progress,
+            context=self._context_text,
+        )
+        (cfg.work_dir / f"ai-{label}.txt").write_text(answer.text, encoding="utf-8")
+        self.cost_usd += answer.cost_usd
+        self.turns += answer.turns
+        self.notes += answer.notes
+        return answer.text, f"{self.backend.name}:{label} model={self.model}"
 
     # --- passes -------------------------------------------------------
     def _pass_full(self) -> tuple[list[Finding], list[str], list[str]]:
         cfg = self.config
-        prompt = FULL_PROMPT.replace("{max_findings}", str(cfg.claude_max_findings))
+        prompt = FULL_PROMPT.replace("{max_findings}", str(cfg.ai_max_findings))
         if cfg.exclude:
             prompt += "\nIgnore these paths entirely: " + ", ".join(cfg.exclude[:40]) + "\n"
         if cfg.scope_paths:
@@ -240,43 +170,44 @@ class ClaudeRunner(Runner):
                 f"\nScope: audit ONLY these files (changed by `{cfg.diff_range}`), reading "
                 f"whatever else you need for context:\n{listed}\n"
             )
-        text, command, stderr = self._invoke(prompt, cfg.claude_model, "full")
-        (cfg.work_dir / "claude-full.txt").write_text(text, encoding="utf-8")
-        commands, stderrs = [command], [stderr]
+        text, command = self._invoke(prompt, "full")
+        commands = [command]
         parsed = extract_json(text)
         if not (isinstance(parsed, dict) and "findings" in parsed):
             # The audit ran but the JSON is unusable - reshape it instead of losing it.
             convert = CONVERT_PROMPT.replace("{review_text}", truncate(text, 60000))
-            text, command2, stderr2 = self._invoke(convert, "sonnet", "full-convert")
+            text, command2 = self._invoke(convert, "full-convert")
             commands.append(command2)
-            stderrs.append(stderr2)
-        return self._parse(text, "full"), commands, stderrs
+        return self._parse(text, "full"), commands, []
 
     def _pass_review(self) -> tuple[list[Finding], list[str], list[str]]:
         cfg = self.config
+        if not self.backend.agentic:
+            raise RuntimeError(
+                f"the {self.backend.name} backend cannot review a diff: it has no access to git. "
+                "Use --ai-mode full, or --ai-provider claude-cli."
+            )
         target = (
             f"the diff `{cfg.diff_range}`"
             if cfg.diff_range
             else "the pending changes on the current branch (the diff against its merge base)"
         )
         prompt = REVIEW_PROMPT.replace("{diff_target}", target)
-        text, command, stderr = self._invoke(prompt, cfg.claude_model, "review")
-        (cfg.work_dir / "claude-review.md").write_text(text, encoding="utf-8")
-        commands, stderrs = [command], [stderr]
+        text, command = self._invoke(prompt, "review")
+        commands = [command]
 
         parsed = extract_json(text)
         if not (isinstance(parsed, dict) and "findings" in parsed):
             convert = CONVERT_PROMPT.replace("{review_text}", truncate(text, 60000))
-            text2, command2, stderr2 = self._invoke(convert, "sonnet", "review-convert")
+            text, command2 = self._invoke(convert, "review-convert")
             commands.append(command2)
-            stderrs.append(stderr2)
-            text = text2
-        return self._parse(text, "security-review"), commands, stderrs
+        return self._parse(text, "security-review"), commands, []
 
     def scan(self):
         cfg = self.config
+        self._context_text = self._prepare_context()
         modes = {"full": ["full"], "review": ["review"], "both": ["full", "review"]}.get(
-            cfg.claude_mode, ["full"]
+            cfg.ai_mode, ["full"]
         )
         findings: list[Finding] = []
         commands: list[str] = []
@@ -333,6 +264,9 @@ class ClaudeRunner(Runner):
                     remediation=truncate(str(item.get("remediation") or ""), 2000),
                     confidence=str(item.get("confidence") or ""),
                     snippet=read_snippet(self.config.target, rel, line),
+                    provider=VENDOR.get(self.backend.name, self.backend.name),
+                    model=self.model,
+                    pass_name="full" if source == "full" else "review",
                     raw={"source": source},
                 )
             )
@@ -340,11 +274,19 @@ class ClaudeRunner(Runner):
 
     def run(self) -> ToolResult:
         result = super().run()
-        notes = []
+        notes: list[str] = []
+        # How the model saw the project belongs in the report: an agentic backend
+        # read it, an API backend was handed a slice, and those are not the same
+        # analysis.
+        notes.append(
+            f"{self.backend.name} · {self.model} · "
+            + ("explored the repository itself" if self.backend.agentic else "was given a fixed context")
+        )
+        notes += [n for n in self.notes if n and n != self.context_note or n == self.context_note]
         if self.summary:
             notes.append(self.summary)
         if self.cost_usd:
             notes.append(f"[cost ${self.cost_usd:.2f}, {self.turns} turns]")
         if result.ok and notes:
-            result.message = "\n\n".join(notes)
+            result.message = "\n\n".join(dict.fromkeys(notes))
         return result

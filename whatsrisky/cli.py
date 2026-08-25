@@ -14,6 +14,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import __version__, settings
+from .ai import PROVIDER_CHOICES
 from .core import (
     ALL_TOOLS,
     DEFAULT_TOOLS,
@@ -48,7 +49,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         console.print("[green]All scanners present.[/]")
         return 0
 
-    brew_targets = [t["binary"] for t in missing if t["binary"] != "claude"]
+    brew_targets = [t["binary"] for t in missing if t["binary"]]
     if args.install and brew_targets:
         if not which("brew"):
             console.print("[red]Homebrew not found; install the tools manually.[/]")
@@ -57,8 +58,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         return subprocess.run(["brew", "install", *brew_targets]).returncode
     if brew_targets:
         console.print(f"\nInstall the missing scanners with:\n  brew install {' '.join(brew_targets)}")
-    if any(t["binary"] == "claude" for t in missing):
-        console.print("  npm install -g @anthropic-ai/claude-code")
+    for tool in missing:
+        if not tool["binary"]:
+            console.print(f"  {tool['name']}: {tool['hint']}")
     return 1
 
 
@@ -83,9 +85,14 @@ def _options_from_args(args: argparse.Namespace) -> ScanOptions:
     if args.tools is not None:
         options.tools = [t.strip() for t in args.tools.split(",") if t.strip()]
     # Naming a Claude setting is an unambiguous request for the AI pass.
-    wants_ai = args.ai or args.model is not None or args.claude_mode is not None
-    if wants_ai and "claude" not in options.tools:
-        options.tools = options.tools + ["claude"]
+    wants_ai = (
+        args.ai
+        or args.model is not None
+        or args.ai_mode is not None
+        or args.ai_provider is not None
+    )
+    if wants_ai and "ai" not in options.tools:
+        options.tools = options.tools + ["ai"]
     skipped = {t.strip() for t in (args.skip or "").split(",") if t.strip()}
     if skipped:
         options.tools = [t for t in options.tools if t not in skipped]
@@ -96,9 +103,11 @@ def _options_from_args(args: argparse.Namespace) -> ScanOptions:
         ("out_dir", args.out_dir),
         ("work_dir", args.work_dir),
         ("model", args.model),
-        ("claude_mode", args.claude_mode),
-        ("claude_timeout", args.claude_timeout),
-        ("claude_max_findings", args.claude_max_findings),
+        ("ai_provider", args.ai_provider),
+        ("ai_mode", args.ai_mode),
+        ("ai_timeout", args.ai_timeout),
+        ("ai_max_findings", args.ai_max_findings),
+        ("ai_context_bytes", args.ai_context_bytes),
         ("trivy_scanners", args.trivy_scanners),
         ("gitleaks_mode", args.gitleaks_mode),
         ("timeout", args.timeout),
@@ -107,6 +116,7 @@ def _options_from_args(args: argparse.Namespace) -> ScanOptions:
         ("max_per_severity", args.max_per_severity),
         ("fail_on", args.fail_on),
         ("diff", args.diff),
+        ("baseline", args.baseline),
     ):
         if value is not None:
             setattr(options, name, value)
@@ -118,6 +128,8 @@ def _options_from_args(args: argparse.Namespace) -> ScanOptions:
         options.offline = True
     if args.no_default_excludes:
         options.use_default_excludes = False
+    if args.no_compare:
+        options.compare = False
     if args.keep_work:
         options.keep_work = True
     if args.open:
@@ -179,11 +191,17 @@ class ProgressView:
         if kind == "info":
             self.console.print(f"[bold]whatsrisky {__version__}[/] {payload['message']}")
             line = f"scanners: {', '.join(payload['tools'])}"
-            if "claude" in payload["tools"]:
-                line += f"  ·  claude: {payload['model']} ({payload['claude_mode']})"
+            if "ai" in payload["tools"]:
+                model = payload.get("model") or "backend default"
+                line += f"  ·  ai: {model} ({payload['ai_mode']})"
             self.console.print(line)
             return
         if kind == "report":
+            return
+        if kind == "live":
+            target = payload.get("html") or payload.get("json")
+            if target:
+                self.console.print(f"[dim]live report {target}[/]")
             return
         self.model.handle(kind, payload)
         if not self.live:
@@ -265,6 +283,21 @@ def cmd_scan(args: argparse.Namespace) -> int:
     else:
         console.print()
         console.print(_summary_table(outcome.report))
+        comparison = outcome.report.comparison
+        if comparison:
+            counts = comparison["counts"]
+            bits = [
+                f"[red]{counts.get('new', 0)} new[/]",
+                f"{counts.get('open', 0)} open",
+                f"[green]{counts.get('resolved', 0)} resolved[/]",
+            ]
+            if counts.get("reintroduced"):
+                bits.append(f"[yellow]{counts['reintroduced']} reintroduced[/]")
+            if comparison.get("moved"):
+                bits.append(f"[dim]{comparison['moved']} moved[/]")
+            console.print(
+                "vs " + (comparison["baseline_scan_id"] or "baseline") + ": " + "  ·  ".join(bits)
+            )
         for tool in (t for t in outcome.report.tools if not t.ok):
             console.print(
                 f"[{STATUS_STYLE.get(tool.status, 'yellow')}]! {tool.name} {tool.status}[/]: "
@@ -281,8 +314,11 @@ def cmd_scan(args: argparse.Namespace) -> int:
             console.print(f"[dim]raw scanner output kept in {outcome.work_dir}[/]")
 
     if options.open_report:
-        docx = next((p for p in outcome.written if p.suffix == ".docx"), None)
-        if docx and not open_file(docx):
+        # The HTML is the view; the DOCX is the deliverable. Open the view.
+        preferred = next(
+            (p for suffix in (".html", ".docx") for p in outcome.written if p.suffix == suffix), None
+        )
+        if preferred and not open_file(preferred):
             console.print("[yellow]could not open the report on this platform[/]")
     return outcome.exit_code
 
@@ -328,20 +364,32 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument(
         "--ai",
         action="store_true",
-        help="add the Claude review pass (off by default: it spends tokens and needs network)",
+        help="add the AI review pass (off by default: it spends tokens and needs network)",
+    )
+    scan.add_argument(
+        "--ai-provider",
+        choices=list(PROVIDER_CHOICES),
+        help="who runs the model (implies --ai; default claude-cli, the only one that reads the repo itself)",
     )
     scan.add_argument(
         "--diff",
         help="scope the scan to files changed in a git range, e.g. HEAD~1..HEAD or main...HEAD",
     )
-    scan.add_argument("--model", help="Claude model for the AI review (implies --ai; default opus)")
     scan.add_argument(
-        "--claude-mode",
-        choices=["full", "review", "both"],
-        help="full = whole-project audit prompt; review = security-review on the diff; both (implies --ai)",
+        "--model", help="model for the AI review (implies --ai; default: the backend's own)"
     )
-    scan.add_argument("--claude-timeout", type=int, help="seconds for each claude pass")
-    scan.add_argument("--claude-max-findings", type=int, help="cap on AI findings")
+    scan.add_argument(
+        "--ai-mode",
+        choices=["full", "review", "both"],
+        help="full = whole-project audit; review = the branch diff (agentic backends only); both",
+    )
+    scan.add_argument("--ai-timeout", type=int, help="seconds for each AI pass")
+    scan.add_argument("--ai-max-findings", type=int, help="cap on AI findings")
+    scan.add_argument(
+        "--ai-context-bytes",
+        type=int,
+        help="how much source a non-agentic backend is shown (default 240000)",
+    )
     scan.add_argument(
         "--semgrep-config", action="append", help="semgrep --config value, repeatable (default: auto)"
     )
@@ -382,9 +430,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scan.add_argument("--profile", help="start from a saved profile, then apply the flags below it")
     scan.add_argument("--save-profile", help="store these settings under this profile name")
+    scan.add_argument(
+        "--baseline",
+        help="report to compare against (default: the most recent one in the output directory)",
+    )
+    scan.add_argument(
+        "--no-compare", action="store_true", help="do not compare against a previous report"
+    )
     scan.add_argument("--work-dir", help="where to keep raw scanner output")
     scan.add_argument("--keep-work", action="store_true", help="do not delete raw scanner output")
-    scan.add_argument("--open", action="store_true", help="open the DOCX when done")
+    scan.add_argument("--open", action="store_true", help="open the report when done (HTML if written)")
     scan.add_argument("--quiet", action="store_true", help="print only the written report paths")
     scan.add_argument(
         "--json-stdout",

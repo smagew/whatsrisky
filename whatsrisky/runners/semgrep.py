@@ -108,6 +108,7 @@ class SemgrepRunner(Runner):
                     references=_as_list(meta.get("references"))[:5],
                     remediation=remediation,
                     confidence=str(meta.get("confidence", "")),
+                    pass_name="code",
                     snippet=snippet.strip()[:1500],
                     raw={"technology": _as_list(meta.get("technology"))},
                 )

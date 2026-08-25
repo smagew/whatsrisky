@@ -1,14 +1,14 @@
+from .ai import AiRunner
 from .base import Runner, ScanConfig
+from .gitleaks import GitleaksRunner
 from .semgrep import SemgrepRunner
 from .trivy import TrivyRunner
-from .gitleaks import GitleaksRunner
-from .claude_review import ClaudeRunner
 
 ALL_RUNNERS: dict[str, type[Runner]] = {
     SemgrepRunner.name: SemgrepRunner,
     TrivyRunner.name: TrivyRunner,
     GitleaksRunner.name: GitleaksRunner,
-    ClaudeRunner.name: ClaudeRunner,
+    AiRunner.name: AiRunner,
 }
 
 __all__ = [
@@ -17,6 +17,6 @@ __all__ = [
     "SemgrepRunner",
     "TrivyRunner",
     "GitleaksRunner",
-    "ClaudeRunner",
+    "AiRunner",
     "ALL_RUNNERS",
 ]

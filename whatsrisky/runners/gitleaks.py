@@ -190,5 +190,6 @@ class GitleaksRunner(Runner):
                 "4) Add a pre-commit gitleaks hook to prevent recurrence."
             ),
             snippet=truncate(item.get("Match", ""), 240),
+            pass_name=mode,
             raw={"mode": mode, "commit": commit, "fingerprint": item.get("Fingerprint", "")},
         )
