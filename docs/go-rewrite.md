@@ -1,6 +1,6 @@
 # Rewriting in Go — specification
 
-Status: **phases 1-4 done**, see the checklists. DOCX is dropped; see the cost below.
+Status: **phases 1-5 done**, see the checklists. DOCX is dropped; see the cost below.
 
 ## Why
 
@@ -144,11 +144,11 @@ something a machine checks.
 - [x] Live report written before the first scanner and after each one.
 
 ### Phase 5 — the terminal UI
-- [ ] Settings screen: profile picker first, every option, the live equivalent
+- [x] Settings screen: profile picker first, every option, the live equivalent
       command, scanner probing, warnings.
-- [ ] Run screen: per-scanner progress with elapsed time and current activity,
+- [x] Run screen: per-scanner progress with elapsed time and current activity,
       View report available from the first second.
-- [ ] Tests, headless.
+- [x] Tests, headless.
 
 ### Phase 6 — shipping
 - [ ] `go build` produces one static binary; `make build-all` cross-compiles for

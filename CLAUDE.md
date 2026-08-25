@@ -135,6 +135,10 @@ For any non-trivial change, in order:
 
 ## Gotchas
 
+- **`whatsrisky` is a directory, not a binary, until the rewrite lands.** Building
+  with `-o whatsrisky` writes over the Python package; `rm -rf whatsrisky` deletes
+  it. `make build` targets `dist/`. This cost a restore from a parent commit once.
+
 Hard-won; check before touching the area. Add to this list whenever a surprise
 costs time.
 

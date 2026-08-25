@@ -51,9 +51,11 @@ go-lint:  ## gofmt + go vet
 go-test: go-lint  ## the Go test suite
 	go test ./...
 
-build:  ## build the binary
-	go build -o whatsrisky ./cmd/whatsrisky
-	@./whatsrisky --version
+# dist/, never ./whatsrisky: that name is the Python package directory until the
+# rewrite lands, and writing a binary over it is how the tree got deleted once.
+build:  ## build the binary into dist/
+	go build -o dist/whatsrisky ./cmd/whatsrisky
+	@./dist/whatsrisky --version
 
 # The Python implementation is the specification: testdata/parity holds what it
 # computes, and the Go tests require the same answers. Regenerate after changing
