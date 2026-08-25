@@ -1,6 +1,6 @@
 # Rewriting in Go — specification
 
-Status: **phases 1-2 done**, see the checklists. DOCX is dropped; see the cost below.
+Status: **phases 1-3 done**, see the checklists. DOCX is dropped; see the cost below.
 
 ## Why
 
@@ -122,10 +122,12 @@ something a machine checks.
 - [x] Integration tests against the real binaries, as now.
 
 ### Phase 3 — the AI pass
-- [ ] The backend contract with `agentic`, claude-cli via stream-json, OpenAI over
+- [x] A live, opt-in test for the claude CLI, because a stub cannot cover the real
+      thing: `WHATSRISKY_LIVE_AI=1 go test ./internal/runner/ -run Live`.
+- [x] The backend contract with `agentic`, claude-cli via stream-json, OpenAI over
       the API, context selection for non-agentic backends.
-- [ ] The same refusal when a backend cannot do what was asked.
-- [ ] The stub-server tests, ported.
+- [x] The same refusal when a backend cannot do what was asked.
+- [x] The stub-server tests, ported.
 
 ### Phase 4 — output and the CLI
 - [ ] JSON identical to Python's under `make diff-parity`.

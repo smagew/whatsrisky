@@ -3,7 +3,7 @@
 
 PY ?= python3
 
-.PHONY: help check lint test test-all selfscan check-ci clean go-test go-lint parity diff-parity
+.PHONY: help check lint test test-all selfscan check-ci clean go-test go-lint parity diff-parity live-ai
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t22
@@ -63,6 +63,10 @@ parity:  ## regenerate testdata/parity from the Python implementation
 # has to be able to correlate against a baseline a Python scan wrote.
 diff-parity:  ## scan one fixture with both implementations and diff the findings
 	go test ./internal/runner/ -run GoAndPython -v
+
+# A stub cannot cover the real CLI's behaviour. Opt-in: it spends tokens.
+live-ai:  ## run the AI pass against the real claude CLI
+	WHATSRISKY_LIVE_AI=1 go test ./internal/runner/ -run Live -v -timeout 15m
 
 clean:  ## remove build and report artifacts
 	rm -rf whatsrisky-reports .pytest_cache dist build *.egg-info
