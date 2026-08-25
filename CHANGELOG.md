@@ -5,6 +5,49 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-25
+
+Rewritten in Go. One binary, no runtime, installed the way the scanners it
+orchestrates are installed. See [docs/go-rewrite.md](docs/go-rewrite.md) for why,
+what it cost, and what it had to preserve.
+
+### Changed
+
+- **whatsrisky is a single static binary.** `curl -sSfL …/install.sh | sh`, or a
+  release archive per platform for darwin, linux and windows on amd64 and arm64.
+  No Python, no virtualenv, no interpreter that reports itself externally managed.
+  The Claude Code plugin and the desktop UI on the roadmap now have no
+  prerequisites beyond the scanners themselves.
+- **The report schema, the config file and the CLI are unchanged.** Schema stays at
+  version 3 field for field; `~/.config/whatsrisky/config.json` is read as the
+  Python version wrote it, migrations and all, so nobody re-creates their profiles
+  because the tool changed language; every flag still means what it meant.
+- The terminal UI is a Bubble Tea model rather than a Textual app. Same form, same
+  live equivalent-command panel, same warnings before the scan rather than after.
+
+### Removed
+
+- **The DOCX report.** `python-docx` plus hand-written OOXML has no equivalent in
+  Go under a permissive licence, and the HTML report had already become the working
+  view. `--format docx` fails with the reason and the two ways to get a Word file
+  rather than being ignored in silence. The Python implementation stays retrievable
+  at the `v0.2.0-python` tag.
+
+### Verified
+
+Parity was a differential test, not a claim: both implementations scanned the same
+project and every field of every finding had to agree — **28 findings and 17
+contract fields identical**, fingerprints included, because without matching
+digests a Go scan could not correlate against a baseline a Python scan wrote. The
+frozen record of what the reference computed stays in `testdata/parity/`.
+
+### Fixed on the way
+
+- Flags may follow the path. Go's flag package stops at the first non-flag
+  argument, so `whatsrisky <path> --out-dir X` silently ignored the flag.
+- A missing scanner's progress row no longer reports "0 findings", which says
+  nothing about a scanner that never ran; it carries the reason.
+
 ### Added
 
 - `Makefile` with `check`, `test-all`, `selfscan` and `check-ci`. The last one replays the CI job

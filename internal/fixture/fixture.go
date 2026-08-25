@@ -10,13 +10,18 @@
 package fixture
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 )
 
+// seed makes the fixture reproducible. The bytes are derived from a hash stream
+// rather than math/rand: determinism is the requirement, and a hash says
+// "derived deterministically" more plainly than a seeded PRNG - which a scanner
+// also, reasonably, flags on sight.
 const seed = 20260824
 
 const appTemplate = `import os
@@ -91,13 +96,37 @@ def render_profile(bio):
     return "<div class='bio'>" + bio + "</div>"
 `
 
-// Secrets returns the fake credentials, shaped so scanner rules fire.
+// stream yields deterministic bytes from the seed: sha256(seed || counter),
+// consumed in order.
+type stream struct {
+	counter uint64
+	buffer  []byte
+}
+
+func (s *stream) next() byte {
+	if len(s.buffer) == 0 {
+		var block [8]byte
+		binary.BigEndian.PutUint64(block[:], seed+s.counter)
+		sum := sha256.Sum256(block[:])
+		s.buffer = sum[:]
+		s.counter++
+	}
+	value := s.buffer[0]
+	s.buffer = s.buffer[1:]
+	return value
+}
+
+// Secrets returns the fake credentials, shaped so scanner rules fire. They are
+// derived rather than written down: a literal in the source would trip GitHub
+// push protection and every secret scanner pointed at this repository, and a
+// low-entropy pattern would be rejected by the very rules the fixture exists to
+// exercise.
 func Secrets() (awsID, awsSecret, ghToken string) {
-	source := rand.New(rand.NewSource(seed))
+	source := &stream{}
 	body := func(length int, alphabet string) string {
 		out := make([]byte, length)
 		for i := range out {
-			out[i] = alphabet[source.Intn(len(alphabet))]
+			out[i] = alphabet[int(source.next())%len(alphabet)]
 		}
 		return string(out)
 	}

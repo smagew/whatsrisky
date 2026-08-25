@@ -14,42 +14,37 @@ practices is a bug unless the divergence is deliberate and written down.
 ## Commands
 
 ```bash
-uv venv && uv pip install -e ".[dev]"   # dev environment
-make check       # lint + unit tests + the self-scan gate
-make test-all    # adds the integration tests (needs the scanner binaries)
-make check-ci    # runs the CI job steps against a clean export of HEAD
+make check       # gofmt + vet + tests + the self-scan gate
+make test        # -short: no scanner binaries needed
+make test-all    # everything, against the real scanners
+make build-all   # every release archive into dist/
+make live-ai     # the AI pass against the real claude CLI (spends tokens)
 ```
 
-`make check` before every push, `make check-ci` before touching the workflow.
+`make check` before every push.
 
 ## Architecture
 
 A scan is a pipeline: options → scanners in parallel → normalized findings → report writers.
 
-- `whatsrisky/core.py` — `ScanOptions` (every knob, serializable) and `run_scan()`.
-  No terminal, no UI, no rich. This is the library API and the single source of
-  truth for defaults, exclusions and diff scoping.
-- `whatsrisky/runners/` — one module per scanner. Each returns normalized
-  `Finding` objects and maps its native severities onto the shared scale
-  explicitly. `base.Runner` gives them availability probing, per-platform install
-  hints and the progress channel.
-- `whatsrisky/ai/` — who runs the AI pass. `base.py` defines the contract,
-  including `agentic`: whether the backend reads the repository itself. `claude_cli.py`
-  is agentic, `openai_api.py` is not, `context.py` chooses what a non-agentic
-  backend gets to see. `runners/ai.py` owns the prompts and the JSON contract with
-  the model and knows nothing about who answers.
-- `whatsrisky/compare.py` — rescan correlation. `whatsrisky/categories.py` — CWE to
-  a closed category vocabulary. `whatsrisky/report/templates/viewer.html` — the
-  whole HTML viewer in one file.
-- `whatsrisky/models.py` — `Severity`, `Finding`, `ToolResult`, `ScanReport`, and
-  `SCHEMA_VERSION`. The severity mapping rationale lives here.
-- `whatsrisky/report/` — output writers (DOCX, Markdown). They read the model and
-  never re-derive severity or scope logic.
-- `whatsrisky/progress.py` — one progress model, rendered by both front ends.
-- `whatsrisky/cli.py` — argparse + rich. `whatsrisky/ui.py` — the Textual settings
-  and progress UI. `whatsrisky/settings.py` — persisted profiles.
-- `schema/report.schema.json` — the machine contract for other tools. Everything
-  the JSON report carries is documented there.
+- `cmd/whatsrisky` — the CLI and its subcommands. No logic beyond argument
+  handling and rendering.
+- `internal/model` — severity, findings, the category vocabulary, the report and its
+  verdict rules. `SchemaVersion` lives here.
+- `internal/scan` — `Options` (every setting, serializable) and `Run()`. No
+  terminal, no UI: this is the library API and the single source of truth for the
+  defaults, the exclusions and the diff scoping.
+- `internal/runner` — one file per scanner. Each maps its own severities onto the
+  shared scale explicitly, and each keeps its own honesty (Trivy states that it
+  ignored `--diff`).
+- `internal/ai` — who runs the AI pass. `Agentic` is part of the contract: one
+  backend reads the repository, the other sees the slice we chose.
+- `internal/compare` — rescan correlation. `internal/report` — JSON, HTML
+  (`templates/viewer.html`, embedded with go:embed), Markdown. `internal/ui` — the
+  Bubble Tea interface. `internal/config` — profiles and the last-run memory.
+- `schema/report.schema.json` — the machine contract for other tools.
+- `testdata/parity` — what the Python implementation computed, frozen. The tests
+  still check against it; see docs/go-rewrite.md.
 
 ## Delivery flow
 
@@ -92,24 +87,25 @@ For any non-trivial change, in order:
   not a proxy — a test must fail when the feature is actually wrong; parser tests
   run against real scanner output, not mocks. (3) Reproduce the failing variant
   before claiming a fix works.
-- **No credentials in this repository, real or fake.** The vulnerable fixture is
-  derived from a seed at test time. A literal `ghp_…` trips GitHub push protection
-  and every secret scanner pointed at us — and CPython folds a split literal back
-  together in the `.pyc`.
+- **No credentials in this repository, real or fake.** The vulnerable fixture
+  (`internal/fixture`) derives them from a hash stream at test time. A literal
+  `ghp_…` trips GitHub push protection and every secret scanner pointed at us, and
+  splitting one across two string parts does not help: the halves are still
+  high-entropy strings.
 - **English-only source.** All shipped text — code, comments, docs, schema
   descriptions, prompts, commit messages — is English. Other languages appear only
   as an interface locale in a viewer, never in the source.
-- **Every setting goes through `ScanOptions`.** Add the field, the flag, the
+- **Every setting goes through `scan.Options`.** Add the field, the flag, the
   widget, and the `command_line()` case together. A setting that exists in only
   one front end is a bug: the UI's "equivalent command" panel is what keeps the
   CLI and the UI honest.
-- **Two independent versions, both contracts.** `whatsrisky/__init__.py` holds the
-  package version and nothing else does — `pyproject.toml` reads it through
-  `[tool.hatch.version]`, so a wheel cannot disagree with the reports it writes.
-  `SCHEMA_VERSION` in `models.py` versions the JSON report and moves on its own
-  schedule. A change that ships bumps the package version and closes a CHANGELOG
-  section in the same PR; `tests/test_version.py` fails when either is missing.
-- **JSON changes bump `SCHEMA_VERSION`.** Other tools consume the report;
+- **Two independent versions, both contracts.** `cmd/whatsrisky/main.go` holds the
+  package version and nothing else does — the Makefile reads it out of the source
+  and the release workflow refuses to publish when the tag disagrees.
+  `model.SchemaVersion` versions the JSON report and moves on its own schedule. A
+  change that ships bumps the package version and closes a CHANGELOG section in the
+  same PR; `cmd/whatsrisky/version_test.go` fails when either is missing.
+- **JSON changes bump `model.SchemaVersion`.** Other tools consume the report;
   `schema/report.schema.json` is a contract, not documentation.
 - **Design system** (when a viewer exists): the same rules as whydiff, because the
   two windows sit side by side — hex colours only in the token block on
@@ -126,18 +122,24 @@ For any non-trivial change, in order:
 
 ## Release
 
-1. Bump `__version__` in `whatsrisky/__init__.py` (semver: a report-schema change or
-   a new pass is a minor, a fix is a patch).
+1. Bump `Version` in `cmd/whatsrisky/main.go` (semver: a report-schema change or a
+   new pass is a minor, a fix is a patch).
 2. Rename the CHANGELOG's `[Unreleased]` heading to `[X.Y.Z] - YYYY-MM-DD` and open a
    fresh empty `[Unreleased]` above it.
-3. `python -m pytest tests -q` — the version tests check both.
-4. Merge, then tag `vX.Y.Z` on main.
+3. `make check` — the version tests check both.
+4. Merge, then tag `vX.Y.Z` on main; the release workflow cross-compiles, verifies
+   the tag against the source, and publishes the archives with checksums.
 
 ## Gotchas
 
-- **`whatsrisky` is a directory, not a binary, until the rewrite lands.** Building
-  with `-o whatsrisky` writes over the Python package; `rm -rf whatsrisky` deletes
-  it. `make build` targets `dist/`. This cost a restore from a parent commit once.
+- **`make build` targets `dist/`, never `./whatsrisky`.** That name was the Python
+  package directory, and building over it deleted the tree once, three phases
+  before the plan said it should go.
+- **Go's flag package stops at the first non-flag argument**, so `whatsrisky <path>
+  --out-dir X` would ignore the flag. `parseInterleaved` handles it; a test guards
+  it.
+- **Go's JSON encoder escapes `<` by default**, so a finding whose text contains
+  `</script>` cannot break the HTML page. The manual escaping is belt-and-braces.
 
 Hard-won; check before touching the area. Add to this list whenever a surprise
 costs time.
@@ -153,17 +155,14 @@ costs time.
   `Finding.__post_init__` and at each DOCX insertion point.
 - **gitleaks has no exclude flag.** Paths are excluded through a generated config
   with `[extend] useDefault = true` + `[[allowlists]] paths` (verified on 8.30.1).
-- **CI failures here have been about the runner, not the commands.** `uv pip
-  install --system` fails on the uv-managed interpreter setup-uv provides, and
-  `uv venv` fails because setup-uv has already created one — so every job needs
-  `--allow-existing` and `uv run`. `make check-ci` reproduces both preconditions
-  against a clean export; `tests/test_design.py` guards them.
 - **A stub server is how the API backends are tested.** `tests/test_ai.py` runs a
   local `ThreadingHTTPServer` speaking the chat-completions shape, so request
   construction, context injection and every error path are covered without a key.
   What it cannot cover is the real service's behaviour — say so, do not imply it.
 - **`semgrep --config auto` needs the network and metrics.** With `--offline` it
   falls back to `p/security-audit`; `--metrics off` breaks `auto`.
+- **`math/rand` is flagged on sight, and reasonably.** Where determinism is the
+  requirement, derive the bytes from a hash stream instead of silencing the rule.
 - **Semgrep suppressions anchor on the call site**, not on the flagged argument's
   line: `# nosemgrep: rule-id` goes on the line the finding reports. It must also be
   the line *immediately* before it — a two-line comment pushes the marker out of

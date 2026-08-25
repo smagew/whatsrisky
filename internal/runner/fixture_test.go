@@ -7,13 +7,6 @@ import (
 	"github.com/smagew/whatsrisky/internal/fixture"
 )
 
-func requireBinary(t *testing.T, binary string) {
-	t.Helper()
-	if _, err := exec.LookPath(binary); err != nil {
-		t.Skipf("%s is not installed", binary)
-	}
-}
-
 func testConfig(t *testing.T, root string) Config {
 	t.Helper()
 	return Config{
@@ -25,6 +18,19 @@ func testConfig(t *testing.T, root string) Config {
 		TrivyTimeout:    timeout,
 		GitleaksMode:    "auto",
 		GitleaksTimeout: timeout,
+	}
+}
+
+// requireBinary skips a test that needs a real scanner: under -short always, and
+// otherwise when the binary is not installed. `make test` therefore runs on a
+// machine with nothing installed, and `make test-all` exercises the real thing.
+func requireBinary(t *testing.T, binary string) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("-short: skipping the tests that need " + binary)
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skipf("%s is not installed", binary)
 	}
 }
 

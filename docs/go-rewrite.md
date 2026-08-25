@@ -1,6 +1,6 @@
 # Rewriting in Go — specification
 
-Status: **phases 1-5 done**, see the checklists. DOCX is dropped; see the cost below.
+Status: **done.** Shipped as 0.3.0; the Python implementation is tagged `v0.2.0-python`. DOCX is dropped; see the cost below.
 
 ## Why
 
@@ -151,12 +151,22 @@ something a machine checks.
 - [x] Tests, headless.
 
 ### Phase 6 — shipping
-- [ ] `go build` produces one static binary; `make build-all` cross-compiles for
+- [x] `go build` produces one static binary; `make build-all` cross-compiles for
       darwin/linux/windows on amd64/arm64.
-- [ ] A release workflow attaches the binaries to a GitHub release.
-- [ ] `install.sh` in the README, the way Trivy and gitleaks are installed.
-- [ ] The Python tree is deleted and `v0.2.0-python` is tagged so it stays
+- [x] A release workflow attaches the binaries to a GitHub release.
+- [x] `install.sh` in the README, the way Trivy and gitleaks are installed.
+- [x] The Python tree is deleted and `v0.2.0-python` is tagged so it stays
       retrievable.
+
+## What the differential gate proved, and what it cost to lose
+
+The final comparison, before the Python tree was removed: **28 findings and 17
+contract fields identical**, every field of every finding, fingerprints included.
+`testdata/parity/` keeps what the reference computed, so the Go tests still check
+against it - the specification outlived the implementation.
+
+What went with the tree: the cross-implementation tests. From here on parity is
+history, not a gate, which is the right trade only because it was proven first.
 
 ## Version
 

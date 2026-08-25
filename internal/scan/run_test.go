@@ -1,8 +1,8 @@
 package scan
 
 import (
+	"crypto/sha256"
 	"encoding/json"
-	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,18 +56,26 @@ func projectWithASecret(t *testing.T) string {
 }
 
 // randomBody is deterministic: the same fixture every run, no literal anywhere.
+// Derived from a hash stream rather than a seeded PRNG, for the reason
+// internal/fixture explains.
 func randomBody(length int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	source := rand.New(rand.NewSource(20260825))
+	sum := sha256.Sum256([]byte("whatsrisky-scan-fixture"))
 	out := make([]byte, length)
 	for i := range out {
-		out[i] = alphabet[source.Intn(len(alphabet))]
+		if i > 0 && i%len(sum) == 0 {
+			sum = sha256.Sum256(sum[:])
+		}
+		out[i] = alphabet[int(sum[i%len(sum)])%len(alphabet)]
 	}
 	return string(out)
 }
 
 func gitleaksOptions(t *testing.T, root, outDir string) Options {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("-short: skipping the tests that need gitleaks")
+	}
 	if _, err := exec.LookPath("gitleaks"); err != nil {
 		t.Skip("gitleaks is not installed")
 	}
