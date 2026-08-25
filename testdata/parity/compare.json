@@ -1,0 +1,1111 @@
+{
+  "unchanged": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": ""
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 1,
+        "resolved": 0,
+        "reintroduced": 0,
+        "accepted": 0
+      },
+      "moved": 0,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 6,
+          "status": "open",
+          "moved_from": "",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  },
+  "fixed": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      },
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/old.py",
+        "line": 3,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     3 |     pickle.loads(d)\n",
+        "cvss": "",
+        "fingerprint": "04c0b83a4769",
+        "content_key": "e8d9beee2665",
+        "match_key": "d636decabe1e",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": ""
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 1,
+        "resolved": 1,
+        "reintroduced": 0,
+        "accepted": 0
+      },
+      "moved": 0,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 6,
+          "status": "open",
+          "moved_from": "",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        },
+        {
+          "file": "src/old.py",
+          "line": 3,
+          "status": "resolved",
+          "moved_from": "",
+          "first_seen": "scan-1",
+          "last_seen": "scan-1"
+        }
+      ]
+    }
+  },
+  "moved_line": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 42,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     42 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "6ec19505df6f",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": "src/app.py:6"
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 1,
+        "resolved": 0,
+        "reintroduced": 0,
+        "accepted": 0
+      },
+      "moved": 1,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 42,
+          "status": "open",
+          "moved_from": "src/app.py:6",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  },
+  "moved_file": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/net.py",
+        "line": 5,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     5 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "c2ea939c07f1",
+        "content_key": "72890661941a",
+        "match_key": "3a45c6745ba5",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": "src/app.py:6"
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 1,
+        "resolved": 0,
+        "reintroduced": 0,
+        "accepted": 0
+      },
+      "moved": 1,
+      "findings": [
+        {
+          "file": "src/net.py",
+          "line": 5,
+          "status": "open",
+          "moved_from": "src/app.py:6",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  },
+  "new": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": ""
+      },
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "new",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/new.py",
+        "line": 1,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     1 |     os.system(cmd)\n",
+        "cvss": "",
+        "fingerprint": "808d64eadce4",
+        "content_key": "b9c5210b42f2",
+        "match_key": "89674e9844db",
+        "first_seen": "scan-2",
+        "last_seen": "scan-2",
+        "moved_from": ""
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 1,
+        "open": 1,
+        "resolved": 0,
+        "reintroduced": 0,
+        "accepted": 0
+      },
+      "moved": 0,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 6,
+          "status": "open",
+          "moved_from": "",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        },
+        {
+          "file": "src/new.py",
+          "line": 1,
+          "status": "new",
+          "moved_from": "",
+          "first_seen": "scan-2",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  },
+  "reintroduced": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "resolved",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "reintroduced",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": ""
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 0,
+        "resolved": 0,
+        "reintroduced": 1,
+        "accepted": 0
+      },
+      "moved": 0,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 6,
+          "status": "reintroduced",
+          "moved_from": "",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  },
+  "accepted_persists": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "accepted",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "accepted",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": ""
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 0,
+        "resolved": 0,
+        "reintroduced": 0,
+        "accepted": 1
+      },
+      "moved": 0,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 6,
+          "status": "accepted",
+          "moved_from": "",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  },
+  "two_of_one_rule": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 11,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     11 |     os.system(a)\n",
+        "cvss": "",
+        "fingerprint": "f1d01370463c",
+        "content_key": "fa614843bdb3",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      },
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 21,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     21 |     os.system(b)\n",
+        "cvss": "",
+        "fingerprint": "e197b4a29200",
+        "content_key": "244750eb53e9",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 10,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     10 |     os.system(a)\n",
+        "cvss": "",
+        "fingerprint": "b6f28f41fd8b",
+        "content_key": "fa614843bdb3",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": "src/app.py:11"
+      },
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 20,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     20 |     os.system(b)\n",
+        "cvss": "",
+        "fingerprint": "86434cafb9cb",
+        "content_key": "244750eb53e9",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": "src/app.py:21"
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 2,
+        "resolved": 0,
+        "reintroduced": 0,
+        "accepted": 0
+      },
+      "moved": 2,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 10,
+          "status": "open",
+          "moved_from": "src/app.py:11",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        },
+        {
+          "file": "src/app.py",
+          "line": 20,
+          "status": "open",
+          "moved_from": "src/app.py:21",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  },
+  "already_resolved_drops_off": {
+    "baseline": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      },
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "resolved",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/gone.py",
+        "line": 1,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     1 |     eval(x)\n",
+        "cvss": "",
+        "fingerprint": "b9cc810f946e",
+        "content_key": "b12708d3775f",
+        "match_key": "05392f304d43",
+        "first_seen": "",
+        "last_seen": "",
+        "moved_from": ""
+      }
+    ],
+    "current_input": [
+      {
+        "tool": "semgrep",
+        "detector": {
+          "tool": "semgrep",
+          "provider": null,
+          "model": null,
+          "pass": null
+        },
+        "severity": "HIGH",
+        "status": "open",
+        "title": "subprocess shell true",
+        "description": "",
+        "category": "injection.command",
+        "category_label": "Command injection",
+        "source": "source-code",
+        "scanner_category": "",
+        "rule_id": "python.lang.security.audit.subprocess-shell-true",
+        "file": "src/app.py",
+        "line": 6,
+        "end_line": null,
+        "cwe": [],
+        "owasp": [],
+        "references": [],
+        "remediation": "",
+        "package": "",
+        "installed_version": "",
+        "fixed_version": "",
+        "confidence": "",
+        "snippet": "      4 | def ping(host):\n>     6 |     return subprocess.check_output(\"ping -c 1 \" + host, shell=True)\n",
+        "cvss": "",
+        "fingerprint": "1bff5a693c20",
+        "content_key": "72890661941a",
+        "match_key": "c6921bcf057c",
+        "first_seen": "scan-1",
+        "last_seen": "scan-2",
+        "moved_from": ""
+      }
+    ],
+    "expect": {
+      "counts": {
+        "new": 0,
+        "open": 1,
+        "resolved": 0,
+        "reintroduced": 0,
+        "accepted": 0
+      },
+      "moved": 0,
+      "findings": [
+        {
+          "file": "src/app.py",
+          "line": 6,
+          "status": "open",
+          "moved_from": "",
+          "first_seen": "scan-1",
+          "last_seen": "scan-2"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,239 @@
+[
+  {
+    "input": {
+      "tool": "semgrep",
+      "severity": "HIGH",
+      "title": "tainted sql string",
+      "rule_id": "python.django.security.injection.tainted-sql-string",
+      "file": "app.py",
+      "line": 20,
+      "cwe": [
+        "CWE-915"
+      ],
+      "snippet": "      4 | def get(n):\n>    20 |     cur.execute('...' % n)\n"
+    },
+    "expect": {
+      "severity": "HIGH",
+      "category": "injection.sql",
+      "category_label": "SQL injection",
+      "source": "source-code",
+      "fingerprint": "7998708480f5",
+      "content_key": "fca00ab9938d",
+      "match_key": "1808e9192370",
+      "location": "app.py:20"
+    }
+  },
+  {
+    "input": {
+      "tool": "semgrep",
+      "severity": "HIGH",
+      "title": "tainted sql string",
+      "rule_id": "python.django.security.injection.tainted-sql-string",
+      "file": "handlers/app.py",
+      "line": 88,
+      "cwe": [
+        "CWE-915"
+      ],
+      "snippet": "     86 | # moved here\n>    88 |   cur.execute('...' % n)\n"
+    },
+    "expect": {
+      "severity": "HIGH",
+      "category": "injection.sql",
+      "category_label": "SQL injection",
+      "source": "source-code",
+      "fingerprint": "7eab040d8192",
+      "content_key": "fca00ab9938d",
+      "match_key": "797949185d0b",
+      "location": "handlers/app.py:88"
+    }
+  },
+  {
+    "input": {
+      "tool": "trivy",
+      "severity": "CRITICAL",
+      "title": "PyYAML: yaml.load() rce",
+      "rule_id": "CVE-2020-14343",
+      "file": "requirements.txt",
+      "package": "PyYAML",
+      "installed_version": "3.13",
+      "fixed_version": "5.4",
+      "category": "Dependency/pip",
+      "cwe": [
+        "CWE-20"
+      ]
+    },
+    "expect": {
+      "severity": "CRITICAL",
+      "category": "dependency",
+      "category_label": "Vulnerable dependency",
+      "source": "source-code",
+      "fingerprint": "6361db933e08",
+      "content_key": "4123f7c6417e",
+      "match_key": "1937694ba9d4",
+      "location": "requirements.txt"
+    }
+  },
+  {
+    "input": {
+      "tool": "gitleaks",
+      "severity": "CRITICAL",
+      "title": "Hardcoded secret: github-pat",
+      "rule_id": "github-pat",
+      "file": "Dockerfile",
+      "line": 5,
+      "cwe": [
+        "CWE-798"
+      ],
+      "category": "Secret/working-tree",
+      "pass_name": "dir",
+      "snippet": "REDACTED"
+    },
+    "expect": {
+      "severity": "CRITICAL",
+      "category": "secret",
+      "category_label": "Leaked secret",
+      "source": "source-code",
+      "fingerprint": "ea41768eb778",
+      "content_key": "05a6d7b9d102",
+      "match_key": "d32f8b3cd4de",
+      "location": "Dockerfile:5"
+    }
+  },
+  {
+    "input": {
+      "tool": "gitleaks",
+      "severity": "HIGH",
+      "title": "Hardcoded secret: generic-api-key",
+      "rule_id": "generic-api-key",
+      "file": "tests/fixtures/app.py",
+      "line": 12,
+      "category": "Secret/git-history",
+      "pass_name": "git"
+    },
+    "expect": {
+      "severity": "HIGH",
+      "category": "secret",
+      "category_label": "Leaked secret",
+      "source": "git-history",
+      "fingerprint": "12c13191440c",
+      "content_key": "0fefbefd6df9",
+      "match_key": "6e534ae59811",
+      "location": "tests/fixtures/app.py:12"
+    }
+  },
+  {
+    "input": {
+      "tool": "ai",
+      "severity": "CRITICAL",
+      "title": "OS command injection via shell=True",
+      "rule_id": "ai:full",
+      "file": "app.py",
+      "line": 27,
+      "cwe": [
+        "CWE-78"
+      ],
+      "category": "AI/Injection",
+      "provider": "openai",
+      "model": "gpt-5",
+      "pass_name": "full"
+    },
+    "expect": {
+      "severity": "CRITICAL",
+      "category": "injection.command",
+      "category_label": "Command injection",
+      "source": "source-code",
+      "fingerprint": "41dba25a73b9",
+      "content_key": "fecd9ac6e5d6",
+      "match_key": "4a075ff2e266",
+      "location": "app.py:27"
+    }
+  },
+  {
+    "input": {
+      "tool": "semgrep",
+      "severity": "MEDIUM",
+      "title": "last user is root",
+      "rule_id": "dockerfile.security.last-user-is-root.last-user-is-root",
+      "file": "Dockerfile",
+      "line": 2,
+      "cwe": [
+        "CWE-269"
+      ],
+      "category": "SAST/security"
+    },
+    "expect": {
+      "severity": "MEDIUM",
+      "category": "misconfiguration",
+      "category_label": "Misconfiguration",
+      "source": "container",
+      "fingerprint": "a24377c8b078",
+      "content_key": "5c586b93a80c",
+      "match_key": "64c34a4e607c",
+      "location": "Dockerfile:2"
+    }
+  },
+  {
+    "input": {
+      "tool": "semgrep",
+      "severity": "MEDIUM",
+      "title": "github actions mutable action tag",
+      "rule_id": "yaml.github-actions.security.mutable-action-tag",
+      "file": ".github/workflows/ci.yml",
+      "line": 18,
+      "category": "SAST/security"
+    },
+    "expect": {
+      "severity": "MEDIUM",
+      "category": "supply-chain",
+      "category_label": "Supply chain",
+      "source": "ci-config",
+      "fingerprint": "af190f2b2924",
+      "content_key": "56d9d8262171",
+      "match_key": "cfdcd9c8f300",
+      "location": ".github/workflows/ci.yml:18"
+    }
+  },
+  {
+    "input": {
+      "tool": "semgrep",
+      "severity": "MEDIUM",
+      "title": "dynamic urllib use detected",
+      "rule_id": "python.lang.security.audit.dynamic-urllib-use-detected",
+      "file": "ai/openai_api.py",
+      "line": 99,
+      "category": "SAST/security"
+    },
+    "expect": {
+      "severity": "MEDIUM",
+      "category": "ssrf",
+      "category_label": "Server-side request forgery",
+      "source": "source-code",
+      "fingerprint": "ba513e9ca19c",
+      "content_key": "33aece4a23bf",
+      "match_key": "856972c63252",
+      "location": "ai/openai_api.py:99"
+    }
+  },
+  {
+    "input": {
+      "tool": "trivy",
+      "severity": "MEDIUM",
+      "title": "Secrets in build args",
+      "rule_id": "AVD-DS-0031",
+      "file": "Dockerfile",
+      "line": 5,
+      "category": "Misconfiguration/dockerfile",
+      "pass_name": "misconfig"
+    },
+    "expect": {
+      "severity": "MEDIUM",
+      "category": "misconfiguration",
+      "category_label": "Misconfiguration",
+      "source": "container",
+      "fingerprint": "affb1ec11b96",
+      "content_key": "7aae61b5c34a",
+      "match_key": "429b044929e3",
+      "location": "Dockerfile:5"
+    }
+  }
+]

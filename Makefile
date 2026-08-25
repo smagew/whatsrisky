@@ -3,7 +3,7 @@
 
 PY ?= python3
 
-.PHONY: help check lint test test-all selfscan check-ci clean
+.PHONY: help check lint test test-all selfscan check-ci clean go-test go-lint parity
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t22
@@ -42,6 +42,21 @@ check-ci:  ## run the CI job steps against a clean export, with the runner's pre
 	echo "-- unit tests"; uv run $(PY) -m pytest tests -q -m "not integration"; \
 	rm -rf $$work; \
 	echo "-- ok: the unit job would pass"
+
+# --- the Go rewrite (docs/go-rewrite.md) ------------------------------------
+go-lint:  ## gofmt + go vet
+	@test -z "$$(gofmt -l cmd internal)" || (echo "gofmt:"; gofmt -l cmd internal; exit 1)
+	go vet ./...
+
+go-test: go-lint  ## the Go test suite
+	go test ./...
+
+# The Python implementation is the specification: testdata/parity holds what it
+# computes, and the Go tests require the same answers. Regenerate after changing
+# any shared semantics, and read the diff - it is the compatibility break.
+parity:  ## regenerate testdata/parity from the Python implementation
+	$(PY) scripts/gen_parity.py
+	go test ./...
 
 clean:  ## remove build and report artifacts
 	rm -rf whatsrisky-reports .pytest_cache dist build *.egg-info

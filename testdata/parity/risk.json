@@ -1,0 +1,99 @@
+[
+  {
+    "counts": {},
+    "score": 0,
+    "verdict": "CLEAN - no findings from the configured scanners"
+  },
+  {
+    "counts": {
+      "INFO": 1
+    },
+    "score": 0,
+    "verdict": "LOW - hygiene issues only"
+  },
+  {
+    "counts": {
+      "LOW": 1
+    },
+    "score": 1,
+    "verdict": "LOW - hygiene issues only"
+  },
+  {
+    "counts": {
+      "MEDIUM": 1
+    },
+    "score": 2,
+    "verdict": "MODERATE - plan remediation"
+  },
+  {
+    "counts": {
+      "HIGH": 1
+    },
+    "score": 8,
+    "verdict": "HIGH RISK - fix before release"
+  },
+  {
+    "counts": {
+      "CRITICAL": 1
+    },
+    "score": 28,
+    "verdict": "CRITICAL - immediate remediation required"
+  },
+  {
+    "counts": {
+      "CRITICAL": 4,
+      "HIGH": 19,
+      "MEDIUM": 16,
+      "LOW": 2
+    },
+    "score": 96,
+    "verdict": "CRITICAL - immediate remediation required"
+  },
+  {
+    "counts": {
+      "LOW": 100
+    },
+    "score": 57,
+    "verdict": "LOW - hygiene issues only"
+  },
+  {
+    "counts": {
+      "MEDIUM": 40
+    },
+    "score": 63,
+    "verdict": "MODERATE - plan remediation"
+  },
+  {
+    "counts": {
+      "CRITICAL": 10
+    },
+    "score": 96,
+    "verdict": "CRITICAL - immediate remediation required"
+  },
+  {
+    "counts": {
+      "HIGH": 12
+    },
+    "score": 63,
+    "verdict": "HIGH RISK - fix before release"
+  },
+  {
+    "counts": {
+      "INFO": 7,
+      "LOW": 3
+    },
+    "score": 3,
+    "verdict": "LOW - hygiene issues only"
+  },
+  {
+    "counts": {
+      "CRITICAL": 1,
+      "HIGH": 1,
+      "MEDIUM": 1,
+      "LOW": 1,
+      "INFO": 1
+    },
+    "score": 36,
+    "verdict": "CRITICAL - immediate remediation required"
+  }
+]
