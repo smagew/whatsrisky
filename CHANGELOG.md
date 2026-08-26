@@ -37,11 +37,12 @@ All notable changes to this project are documented here. This project follows
 
 - **`--no-ai`**, because a default that spends money has to be one flag to refuse,
   not a list of the three scanners you do want.
-- **The folders of the project are ticked, not typed.** The section lists what is
-  actually in the project folder — `.github`, `cmd`, `docs`, `internal` — and
-  ticking one skips it. Typing the name of a folder you are looking at is
-  dictation, not a choice. The ones already in the usual noise are not offered
-  twice, and a folder that is both ticked and typed appears once.
+- **The folders of the project are picked from a list, not typed.** The row says
+  what is skipped — `6 folders here, none skipped` — and opens the full list
+  vertically, with a tick against each and no length at which it starts hiding
+  things. Typing the name of a folder you are looking at is dictation, not a
+  choice. The ones already in the usual noise are not offered twice, and a folder
+  that is both ticked and typed reaches the scanners once.
 - **The model is a list.** `ai.Models` names what each provider is usually asked
   for — opus, sonnet, haiku for the CLI; gpt-5 and friends for the API — and the
   field completes from it. An id we have never heard of still goes through: a
@@ -85,12 +86,10 @@ All notable changes to this project are documented here. This project follows
   after it.
 - A ticked chip keeps its tick: tview reads square brackets as colour markup, so
   an unescaped `[x]` was swallowed.
-- **No folder is dropped from the row in silence.** The list stopped at ten and
-  said nothing, which is the one thing this project does not allow anywhere else.
-  It now shows what fits and counts the rest — `+6 more` — and the field beside it
-  takes those by name. The row also follows the cursor, so stepping onto a folder
-  that is off the end scrolls to it instead of leaving the cursor somewhere
-  invisible.
+- **No folder is hidden, at any count.** The folders were first a horizontal row
+  that stopped at ten in silence, then one that counted what it hid. Both were the
+  wrong shape: a row of chips suits four fixed scanners, and a project has as many
+  folders as it has. It is a list now, and a list scrolls.
 - A problem that blocks a scan — a path that is not a directory — is on the
   always-visible line, not only in a panel a small terminal hides.
 - A scanner that did not run no longer has "0 findings" written next to it in the

@@ -168,6 +168,11 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   directly - `root.SetRect(...)` then `root.Draw(screen)`. Going through
   `Application` races its own first frame, which produced an 80-column preview of
   a 120-column layout and made the layout look broken.
+- **A row of chips is for a fixed few, a list is for however many.** The four
+  scanners fit on a line and read well there. The project's own folders do not:
+  the same widget reused for them stopped at what fitted, and then at a count of
+  what it hid, before becoming what it should have been - a vertical list behind a
+  summary row. Match the widget to whether you control the length.
 - **`tcell.ColorDefault` is not a background, it is a hole.** It means "whatever
   the terminal has", and a translucent terminal then shows the desktop through the
   text. Set a real ground, set `tview.Styles` too - a drop-down's list and a page's

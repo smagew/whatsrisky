@@ -330,6 +330,10 @@ func (u *UI) onKey(event *tcell.EventKey) *tcell.EventKey {
 		case pagePanel:
 			u.pages.RemovePage(pagePanel)
 			return nil
+		case pagePicker:
+			u.pages.RemovePage(pagePicker)
+			u.refresh()
+			return nil
 		case pageRun:
 			if u.finished() {
 				u.pages.SwitchToPage(pageSettings)

@@ -93,6 +93,29 @@ func (u *UI) item(label string) tview.FormItem {
 	return nil
 }
 
+// pickerList finds the list inside the picker overlay.
+func (u *UI) pickerList(t *testing.T) *tview.List {
+	t.Helper()
+	_, page := u.pages.GetFrontPage()
+	var found *tview.List
+	var walk func(p tview.Primitive)
+	walk = func(p tview.Primitive) {
+		switch typed := p.(type) {
+		case *tview.List:
+			found = typed
+		case *tview.Flex:
+			for index := 0; index < typed.GetItemCount(); index++ {
+				walk(typed.GetItem(index))
+			}
+		}
+	}
+	walk(page)
+	if found == nil {
+		t.Fatal("the picker has no list")
+	}
+	return found
+}
+
 func (u *UI) mustItem(t *testing.T, label string) tview.FormItem {
 	t.Helper()
 	entry := u.item(label)
@@ -268,8 +291,10 @@ func TestThePanelComesBackOnTheNarrowScreen(t *testing.T) {
 
 // --- 3, 4: what we do not look at -----------------------------------
 
-func TestTheProjectsOwnFoldersAreTickedNotTyped(t *testing.T) {
+func TestTheProjectsOwnFoldersAreOfferedAsAList(t *testing.T) {
 	// Typing the name of a folder you are looking at is dictation, not a choice.
+	// The row says what is skipped; pressing it shows every folder, vertically,
+	// because a project has as many as it has.
 	root := t.TempDir()
 	for _, name := range []string{"src", "docs", "node_modules", "cmd"} {
 		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
@@ -281,32 +306,33 @@ func TestTheProjectsOwnFoldersAreTickedNotTyped(t *testing.T) {
 	u := newUI(t, options, "")
 	view := screenOf(u, 160, 44)
 
-	if !strings.Contains(view, "folders here") {
-		t.Fatalf("the project's folders are not offered:\n%s", view)
+	if !strings.Contains(view, "folders to skip") {
+		t.Fatalf("the row is missing:\n%s", view)
 	}
+	if !strings.Contains(view, "3 folders here, none skipped") {
+		t.Errorf("the row does not say what is there:\n%s", lineWith(view, "folders to skip"))
+	}
+
+	row := u.mustItem(t, "folders to skip").(*opener)
+	row.open()
+	picker := frame(u, 160, 44)
 	for _, name := range []string{"src", "docs", "cmd"} {
-		if !strings.Contains(view, name) {
-			t.Errorf("%q is a folder of this project and is not offered", name)
+		if !strings.Contains(picker, name) {
+			t.Errorf("%q is a folder of this project and is not in the list", name)
 		}
 	}
-	// A folder already in the usual noise is not offered twice.
-	if strings.Contains(lineWith(view, "folders here"), "node_modules") {
-		t.Error("node_modules is in the usual noise and should not be a chip too")
+	// The ones we always skip are covered by the switch beside the row.
+	if strings.Contains(picker, "node_modules") {
+		t.Error("node_modules is in the usual noise and should not be offered too")
 	}
-	row := u.mustItem(t, "folders here").(*chips)
-	row.toggle(indexIn(row.names, "docs"))
-	if got := strings.Join(u.collect().Exclude, ","); got != "docs" {
-		t.Errorf("ticking a folder did not reach the options: %q", got)
-	}
-	if got := u.collect().Normalized().CommandLine(); !strings.Contains(got, "--exclude docs") {
-		t.Errorf("and not the command either: %s", got)
+	if !strings.Contains(picker, "esc closes") {
+		t.Error("the list does not say how to leave it")
 	}
 }
 
-func TestNoFolderIsDroppedFromTheRowInSilence(t *testing.T) {
-	// The row used to stop at ten folders and say nothing, which is the one thing
-	// this project does not allow: a list that shows fewer than there are, without
-	// saying so, is a list that lies.
+func TestThePickerShowsEveryFolderHoweverMany(t *testing.T) {
+	// The row used to be horizontal and stopped at what fitted. A list does not
+	// have that problem: it scrolls, and every folder is in it.
 	root := t.TempDir()
 	var made []string
 	for _, name := range []string{
@@ -321,31 +347,24 @@ func TestNoFolderIsDroppedFromTheRowInSilence(t *testing.T) {
 	options := scan.NewOptions()
 	options.Path = root
 	u := newUI(t, options, "")
+	_ = screenOf(u, 100, 30)
 
-	// Narrow on purpose, so they cannot all fit.
-	view := screenOf(u, 100, 30)
-	row := u.mustItem(t, "folders here").(*chips)
-
-	if len(row.names) != len(made) {
-		t.Errorf("the row was given %d folders of %d", len(row.names), len(made))
+	u.mustItem(t, "folders to skip").(*opener).open()
+	list := u.pickerList(t)
+	if list.GetItemCount() != len(made) {
+		t.Errorf("the list holds %d of %d folders", list.GetItemCount(), len(made))
 	}
-	if row.shown() == len(made) {
-		t.Skip("they all fit at this size; nothing to report")
-	}
-	hidden := len(made) - row.shown()
-	if !strings.Contains(view, "+"+itoa(hidden)+" more") {
-		t.Errorf("%d folders are not shown and the screen does not say so:\n%s",
-			hidden, lineWith(view, "folders here"))
+	for index, name := range made {
+		label, _ := list.GetItemText(index)
+		if !strings.Contains(label, name) {
+			t.Errorf("item %d is %q, want %q", index, label, name)
+		}
 	}
 }
 
-func TestTheRowFollowsTheCursorPastWhatFits(t *testing.T) {
-	// Stepping onto a chip that is off the end has to scroll the row. Otherwise the
-	// cursor is somewhere the user cannot see, and space toggles a folder they were
-	// not looking at.
+func TestTickingInThePickerReachesTheOptions(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"alpha", "bravo", "charlie", "delta", "echo",
-		"foxtrot", "golf", "hotel"} {
+	for _, name := range []string{"docs", "src"} {
 		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -353,27 +372,34 @@ func TestTheRowFollowsTheCursorPastWhatFits(t *testing.T) {
 	options := scan.NewOptions()
 	options.Path = root
 	u := newUI(t, options, "")
-	_ = screenOf(u, 100, 30)
+	_ = screenOf(u, 120, 40)
 
-	row := u.mustItem(t, "folders here").(*chips)
-	shown := row.shown()
-	if shown >= len(row.names) {
-		t.Skip("they all fit at this size; nothing to scroll")
+	u.mustItem(t, "folders to skip").(*opener).open()
+	list := u.pickerList(t)
+	// docs sorts first; selecting is toggling.
+	list.SetCurrentItem(0)
+	// Through the real keypress, and through space rather than enter, because the
+	// help line promises space.
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone),
+		func(tview.Primitive) {})
+
+	if got := strings.Join(u.collect().Exclude, ","); got != "docs" {
+		t.Errorf("ticking in the list did not reach the options: %q", got)
 	}
-	// The last chip is off the end to begin with.
-	if row.window(shown) != 0 {
-		t.Errorf("the row starts scrolled, at %d", row.window(shown))
+	if got := u.collect().Normalized().CommandLine(); !strings.Contains(got, "--exclude docs") {
+		t.Errorf("and not the command either: %s", got)
 	}
-	row.cursor = len(row.names) - 1
-	if first := row.window(shown); first+shown != len(row.names) {
-		t.Errorf("the last chip is not in view: window starts at %d, showing %d of %d",
-			first, shown, len(row.names))
+	// The tick shows on screen - checked there rather than in the raw label, which
+	// holds tview's escaped form and would pass while the screen showed nothing.
+	if view := frame(u, 120, 40); !strings.Contains(lineWith(view, "docs"), "[x]") {
+		t.Errorf("the list does not show the tick:\n%s", lineWith(view, "docs"))
 	}
-	// And a click still lands on what is drawn, not on the chip that used to be
-	// in that column.
-	if got := row.chipAt(0); got != row.window(shown) {
-		t.Errorf("a click on the first drawn chip resolved to %d, want %d",
-			got, row.window(shown))
+	if list.GetCurrentItem() != 0 {
+		t.Error("the cursor jumped, so a run of folders cannot be ticked in one pass")
+	}
+	// And the row now says which.
+	if view := frame(u, 120, 40); !strings.Contains(view, "docs") {
+		t.Error("the row does not name what is skipped")
 	}
 }
 
@@ -387,7 +413,11 @@ func TestATickedFolderAndATypedOneAreOneList(t *testing.T) {
 	u := newUI(t, options, "")
 	_ = screenOf(u, 160, 44)
 
-	u.mustItem(t, "folders here").(*chips).toggle(0)
+	u.mustItem(t, "folders to skip").(*opener).open()
+	list := u.pickerList(t)
+	list.SetCurrentItem(0)
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone),
+		func(tview.Primitive) {})
 	u.values.ignorePaths = "docs, *.min.js"
 
 	// "docs" is both ticked and typed, and must appear once.

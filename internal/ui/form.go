@@ -96,10 +96,19 @@ func (u *UI) fields() []field {
 		{"What we do not look at", func(f *tview.Form, w int) {
 			// The folders that are actually there, to tick. Typing the name of a
 			// folder you are looking at is not a choice, it is dictation.
-			if dirs := u.projectDirs(); len(dirs) > 0 {
-				f.AddFormItem(newChips("folders here", dirs, v.ignoreDirs,
-					func(string, bool) { u.refresh() }))
-			}
+			//
+			// A row, not a list, because a project has as many folders as it has:
+			// the row says what is ticked, and opens the whole list vertically.
+			dirs := u.projectDirs()
+			f.AddFormItem(newOpener("folders to skip",
+				func(width int) string {
+					return tickedOr(dirs, v.ignoreDirs,
+						itoa(len(dirs))+" folders here, none skipped", width)
+				},
+				func() {
+					u.openPicker("which folders to skip",
+						"space or click toggles · esc closes", dirs, v.ignoreDirs)
+				}))
 		}},
 		{"What we do not look at", func(f *tview.Form, w int) {
 			input(f, 34, "anything else", v.ignorePaths, "*.min.js, docs/generated", w,
