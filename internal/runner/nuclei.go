@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -44,7 +45,18 @@ func (n *Nuclei) Version() string { return proc.Version(n.binary, "-version") }
 // argv is the command line. Kept apart from Scan so a test can assert that the
 // observational run really does exclude the attacking templates.
 func (n *Nuclei) argv() []string {
-	args := []string{n.binary, "-target", n.config.Target, "-jsonl", "-silent", "-no-color", "-disable-update-check"}
+	return n.argvWith("")
+}
+
+// argvWith builds the command line. When listPath is set, nuclei reads its targets
+// from that file (the seed plus a katana crawl); otherwise it scans the one target.
+func (n *Nuclei) argvWith(listPath string) []string {
+	args := []string{n.binary, "-jsonl", "-silent", "-no-color", "-disable-update-check"}
+	if listPath != "" {
+		args = append(args, "-list", listPath)
+	} else {
+		args = append(args, "-target", n.config.Target)
+	}
 	if !n.config.NetActive {
 		// Observational: leave out the template classes that send payloads. This is
 		// the whole difference between looking and probing.
@@ -84,7 +96,14 @@ func (n *Nuclei) Scan(progress func(string)) (Outcome, error) {
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
-	result, err := proc.Run(n.argv(), proc.Options{Timeout: timeout, OnStderr: nucleiProgress(progress)})
+	argv := n.argv()
+	if len(n.config.ExtraTargets) > 0 {
+		listPath := filepath.Join(n.config.WorkDir, "nuclei-targets.txt")
+		if err := WriteFile(listPath, strings.Join(n.allTargets(), "\n")); err == nil {
+			argv = n.argvWith(listPath)
+		}
+	}
+	result, err := proc.Run(argv, proc.Options{Timeout: timeout, OnStderr: nucleiProgress(progress)})
 	// nuclei exits non-zero on some template errors while still producing valid
 	// findings, so the output is parsed regardless and the error is only reported
 	// if nothing came back at all.
@@ -99,7 +118,7 @@ func (n *Nuclei) Scan(progress func(string)) (Outcome, error) {
 	}
 	return Outcome{
 		Findings: findings,
-		Command:  strings.Join(n.argv(), " "),
+		Command:  strings.Join(argv, " "),
 		Stderr:   result.Stderr,
 		Note:     note,
 	}, nil
@@ -152,6 +171,19 @@ func (n *Nuclei) parse(output string, progress func(string)) []model.Finding {
 		progress(fmt.Sprintf("nuclei: %d finding(s)", len(findings)))
 	}
 	return findings
+}
+
+// allTargets is the seed plus any crawled endpoints, de-duplicated.
+func (n *Nuclei) allTargets() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, url := range append([]string{n.config.Target}, n.config.ExtraTargets...) {
+		if url != "" && !seen[url] {
+			seen[url] = true
+			out = append(out, url)
+		}
+	}
+	return out
 }
 
 // nucleiProgress forwards the lines nuclei writes to stderr as it works.

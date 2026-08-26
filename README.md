@@ -115,6 +115,9 @@ and whatsrisky still scans what it could find. Every alive asset then gets the
 observational passes (surface, testssl, nuclei), rolled into one report where each
 finding carries the asset it came from.
 
+`--crawl` spiders each asset with [katana](https://github.com/projectdiscovery/katana)
+and feeds the endpoints to nuclei, so it checks the pages a site actually has.
+
 `--i-am-authorized` is sharper here: you are stating you may scan the domain and
 every host under it.
 

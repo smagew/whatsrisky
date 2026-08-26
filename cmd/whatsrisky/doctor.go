@@ -52,11 +52,14 @@ func probeTools() []probe {
 	// The perimeter discovery tools are not runners (they feed the fan-out, they do
 	// not produce findings), so they are probed directly. They are optional: a
 	// perimeter scan degrades and says what it could not run.
-	perimeterTools := append(append([]string(nil), perimeter.Tools...), perimeter.ScreenshotTool)
+	perimeterTools := append(append([]string(nil), perimeter.Tools...), perimeter.ScreenshotTool, perimeter.CrawlTool)
 	for _, name := range perimeterTools {
 		covers := "perimeter discovery (optional)"
 		if name == perimeter.ScreenshotTool {
 			covers = "perimeter screenshots (optional)"
+		}
+		if name == perimeter.CrawlTool {
+			covers = "perimeter crawl for --crawl (optional)"
 		}
 		entry := probe{name: name, covers: covers}
 		if path := proc.Which(name); path != "" {

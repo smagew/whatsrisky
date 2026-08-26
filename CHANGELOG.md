@@ -36,7 +36,12 @@ All notable changes to this project are documented here. This project follows
     new estate panel, so a forgotten admin panel is obvious at a glance.
     Observational — a browser loading the page — so no `--net-active`. The estate
     report is a page plus a screenshots directory beside it, rather than one file.
-  - `doctor` now reports the discovery and screenshot tools too.
+  - **katana crawl (`--crawl`).** Each asset is spidered and the endpoints it finds
+    are handed to nuclei, so nuclei checks the pages a site actually has, not only
+    its front door. The crawl stays on the asset's own host and is capped; it is a
+    lot of ordinary GETs, so it is opt-in. The other passes still look at the asset
+    itself.
+  - `doctor` now reports the discovery, screenshot and crawl tools too.
 
 ### Notes
 

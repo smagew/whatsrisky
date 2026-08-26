@@ -22,6 +22,7 @@ func cmdPerimeter(args []string, stdout, stderr *os.File) int {
 	var (
 		authorized = flags.Bool("i-am-authorized", false, "confirm you may scan this domain and everything under it")
 		netActive  = flags.Bool("net-active", false, "allow passes that send attack-shaped traffic (off by default)")
+		crawl      = flags.Bool("crawl", false, "spider each asset with katana and feed the endpoints to nuclei")
 		passes     = flags.String("passes", "", "network passes per asset (default surface,testssl,nuclei)")
 		outDir     = flags.String("out-dir", "", "directory for the report (default ./whatsrisky-reports)")
 		format     = flags.String("format", "", "comma list: html,md,json (default all)")
@@ -90,7 +91,8 @@ func cmdPerimeter(args []string, stdout, stderr *os.File) int {
 
 	cfg := perimeter.Config{
 		Domain: domain, NetActive: *netActive, AIProvider: *aiProvider, AIModel: *modelName,
-		Timeout: time.Duration(*timeout) * time.Second, WorkDir: workDir, ScanID: base, Progress: say,
+		Timeout: time.Duration(*timeout) * time.Second, WorkDir: workDir, ScanID: base,
+		Crawl: *crawl, Progress: say,
 	}
 	if *passes != "" {
 		cfg.Passes = splitList(*passes)

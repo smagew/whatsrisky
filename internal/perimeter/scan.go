@@ -22,6 +22,8 @@ type Config struct {
 	Timeout    time.Duration
 	WorkDir    string
 	ScanID     string // when set, the report uses it; lets screenshots share the base
+	Crawl      bool   // spider each asset with katana and feed the endpoints to nuclei
+	CrawlMax   int
 	Progress   Progress
 }
 
@@ -85,6 +87,11 @@ func Scan(cfg Config, assets []Asset, notes []string) model.Report {
 			AIProvider: cfg.AIProvider, AIModel: cfg.AIModel,
 			NucleiTimeout:  cfg.Timeout,
 			SurfaceTimeout: 60 * time.Second,
+		}
+		if cfg.Crawl {
+			// The crawl feeds nuclei only: the other passes are about the asset
+			// itself, not every page under it.
+			config.ExtraTargets = Crawl(url, cfg.CrawlMax, cfg.Timeout, cfg.Progress)
 		}
 		for _, name := range passes {
 			built, err := runner.New(name, config)

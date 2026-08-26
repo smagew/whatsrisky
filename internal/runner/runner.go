@@ -44,7 +44,8 @@ type Config struct {
 	SurfaceTimeout time.Duration
 	NucleiTimeout  time.Duration
 	NetActive      bool
-	Wordlist       string // path list for ffuf content discovery
+	Wordlist       string   // path list for ffuf content discovery
+	ExtraTargets   []string // extra URLs (e.g. from a katana crawl) for nuclei
 }
 
 // Outcome is what a scan produced, plus the things a report has to say about how

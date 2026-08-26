@@ -256,6 +256,14 @@ func writeList(names []string) (path string, cleanup func(), err error) {
 	return file.Name(), func() { _ = os.Remove(file.Name()) }, nil
 }
 
+func fmtCount(tool string, n int, noun string) string {
+	s := ""
+	if n != 1 {
+		s = "s"
+	}
+	return fmt.Sprintf("%s: %d %s%s", tool, n, noun, s)
+}
+
 func firstLine(text string) string {
 	if i := strings.IndexByte(text, '\n'); i >= 0 {
 		return strings.TrimSpace(text[:i])
