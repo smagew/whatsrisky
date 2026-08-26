@@ -81,7 +81,12 @@ jobs:
           version="${{ steps.check.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$version" -m "$version" -F notes.md
+          # -m and -F are mutually exclusive, so the subject line goes into the
+          # file: a tag whose message is a bare "### Fixed" reads like a mistake.
+          { echo "v$version"; echo; cat notes.md; } > tag-message.txt
+          # --cleanup=verbatim, or git strips every "### Fixed" as a comment and
+          # the tag carries notes with the headings missing.
+          git tag -a "v$version" --cleanup=verbatim -F tag-message.txt
           git push origin "v$version"
           gh release create "v$version" \
             --title "v$version" \

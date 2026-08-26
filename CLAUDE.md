@@ -158,6 +158,11 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   a form that cannot be navigated. Running all of them waits on cursor-blink and
   tick timers - this suite went to 578 seconds before those were bounded, so run
   only what answers immediately.
+- **`git tag` rejects `-F` with `-m`**, and it strips `#` lines from a message
+  file as comments - so CHANGELOG notes reach a tag with every heading missing.
+  `--cleanup=verbatim` with the subject line prepended into the file is the whole
+  fix. Both cost a release: the workflow ran the tests, cross-compiled five
+  platforms, and died on the tag.
 - **A tag pushed by `GITHUB_TOKEN` does not trigger other workflows.** GitHub
   blocks that recursion, so a tag-then-release split would silently never release.
   The release workflow creates the tag and publishes in one job for this reason.

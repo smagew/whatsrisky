@@ -43,6 +43,9 @@ All notable changes to this project are documented here. This project follows
 
 ## [0.3.1] - 2026-08-25
 
+Never published as a release: the release job cross-compiled everything and then
+died on `git tag`, which rejects `-F` with `-m`. These changes ship in 0.3.2.
+
 ### Fixed
 
 - The settings form fits the terminal. It drew 39 lines with nothing clamping them,
