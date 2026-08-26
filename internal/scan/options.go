@@ -21,10 +21,10 @@ var (
 	// NetTools scan a live address rather than a folder. They are a separate set:
 	// nuclei against a URL and semgrep against a URL are not the same request, and
 	// nothing good comes of pretending one vocabulary covers both.
-	NetTools = []string{"surface", "nuclei", "llm-recon"}
+	NetTools = []string{"surface", "testssl", "nuclei", "llm-recon"}
 	// DefaultNetTools is every network pass. The LLM recon spends money and is
 	// opt-out with --no-llm, the same shape as the filesystem ai pass.
-	DefaultNetTools = []string{"surface", "nuclei", "llm-recon"}
+	DefaultNetTools = []string{"surface", "testssl", "nuclei", "llm-recon"}
 	DefaultTools    = []string{"semgrep", "trivy", "gitleaks", "ai"}
 
 	// ToolsWithoutAI is the default set with the review pass taken out. It exists
@@ -51,6 +51,7 @@ var (
 	NetToolCoverage = map[string]string{
 		"surface":   "TLS, headers, cookies, robots.txt — what the server volunteers",
 		"nuclei":    "Known CVEs, misconfig and exposures by template",
+		"testssl":   "Deep TLS: ciphers, protocols, cert chain, named TLS CVEs",
 		"llm-recon": "LLM reading of the surface for weak spots to check by hand",
 	}
 )

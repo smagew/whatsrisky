@@ -156,6 +156,8 @@ func New(name string, config Config) (Runner, error) {
 		return NewAI(config)
 	case "surface":
 		return NewSurface(config), nil
+	case "testssl":
+		return NewTestSSL(config), nil
 	case "nuclei":
 		return NewNuclei(config), nil
 	case "llm-recon":

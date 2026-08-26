@@ -73,6 +73,10 @@ Three passes, each on the same severity scale as the code scan:
 - **surface** reads only what the server serves a visitor — TLS, missing security
   headers, version leaks, insecure cookies, the robots.txt Disallow list. It sends
   nothing an attacker would.
+- **testssl** runs [testssl.sh](https://github.com/testssl/testssl.sh) for the deep
+  TLS picture — cipher suites, protocol versions, the certificate chain, the named
+  TLS vulnerabilities. Also observational; surface's TLS check is the fallback when
+  it is not installed.
 - **nuclei** runs [ProjectDiscovery's](https://github.com/projectdiscovery/nuclei)
   templates for known CVEs, misconfig and exposures. By default it leaves out the
   templates that send payloads; `--net-active` includes them.

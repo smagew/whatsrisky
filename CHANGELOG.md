@@ -16,6 +16,11 @@ All notable changes to this project are documented here. This project follows
     headers a site is missing, version-leaking headers, insecure cookies, and the
     paths robots.txt asks crawlers to avoid. It sends only the GETs a browser
     makes.
+  - **testssl** — deep TLS analysis via [testssl.sh](https://github.com/testssl/testssl.sh):
+    cipher suites, protocol versions, the certificate chain, and the named TLS CVEs
+    (Heartbleed, ROBOT, downgrade). Observational — it only completes handshakes.
+    surface keeps a shallow TLS check as a baseline for when testssl is not
+    installed.
   - **nuclei** — ProjectDiscovery's template scanner for known CVEs, misconfig and
     exposures. By default it excludes the templates that send payloads (fuzzing,
     injection); `--net-active` includes them, and the report says which ran.
