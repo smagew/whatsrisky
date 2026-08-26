@@ -110,6 +110,74 @@ func click(target tview.Primitive, x, y int) {
 	handler(tview.MouseLeftClick, event, func(tview.Primitive) {})
 }
 
+// --- the whole screen is painted ------------------------------------
+
+// unpaintedCells counts the cells whose background is the terminal's own. On a
+// translucent terminal each one is a hole the desktop shows through.
+func unpaintedCells(u *UI, width, height int) int {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		panic(err)
+	}
+	screen.SetSize(width, height)
+	u.width, u.height = width, height
+	u.layout()
+	u.refresh()
+	var root tview.Primitive = u.pages
+	root.SetRect(0, 0, width, height)
+	root.Draw(screen)
+	screen.Show()
+
+	cells, w, h := screen.GetContents()
+	holes := 0
+	for index := 0; index < w*h; index++ {
+		if _, background, _ := cells[index].Style.Decompose(); background == tcell.ColorDefault {
+			holes++
+		}
+	}
+	return holes
+}
+
+func TestEveryCellHasAGround(t *testing.T) {
+	// The ground used to be tcell.ColorDefault, which is the terminal's own
+	// background - so a translucent terminal showed the desktop through the text
+	// and none of it could be read.
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	for _, size := range []struct{ width, height int }{{80, 24}, {120, 36}, {209, 33}} {
+		u := newUI(t, options, "")
+		if holes := unpaintedCells(u, size.width, size.height); holes > 0 {
+			t.Errorf("%dx%d: %d cells show the terminal through",
+				size.width, size.height, holes)
+		}
+	}
+}
+
+func TestAnOverlayIsPaintedToo(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 36)
+	u.key(tcell.KeyCtrlI)
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	screen.SetSize(120, 36)
+	var root tview.Primitive = u.pages
+	root.SetRect(0, 0, 120, 36)
+	root.Draw(screen)
+	screen.Show()
+
+	cells, w, h := screen.GetContents()
+	for index := 0; index < w*h; index++ {
+		if _, background, _ := cells[index].Style.Decompose(); background == tcell.ColorDefault {
+			t.Fatalf("the list overlay leaves %d,%d unpainted", index%w, index/w)
+		}
+	}
+}
+
 // --- 1, 17: it fits, and everything is on the screen -----------------
 
 func TestTheScreenFitsEveryReasonableTerminal(t *testing.T) {

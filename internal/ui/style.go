@@ -21,7 +21,11 @@ const (
 	flagColor    = tcell.Color174
 	passColor    = tcell.Color108
 	cautionColor = tcell.Color179
-	groundColor  = tcell.ColorDefault
+
+	// A solid ground, not tcell.ColorDefault. Default means the terminal's own
+	// background, and a translucent terminal then shows whatever is behind the
+	// window through the text - which is unreadable however good the layout is.
+	groundColor = tcell.Color234
 )
 
 // Colour tags for tview's dynamic markup. A tag is the only way to colour part of

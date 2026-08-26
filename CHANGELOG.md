@@ -50,6 +50,11 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **The interface paints its own ground.** It was `tcell.ColorDefault`, which is
+  the terminal's own background - so on a translucent terminal the desktop showed
+  through the text and none of it could be read. At 209x33 that was 6,532 cells.
+  A test counts them and fails at one, overlays included; the margins around an
+  overlay were `nil` items, which paint nothing at all.
 - **Fields are as wide as their contents need, not as wide as the terminal.**
   tview paints a field's whole width, so one sized to a 200-column terminal was
   sixty-five characters of background running off to the right - which reads as a

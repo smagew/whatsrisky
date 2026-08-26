@@ -162,6 +162,11 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   directly - `root.SetRect(...)` then `root.Draw(screen)`. Going through
   `Application` races its own first frame, which produced an 80-column preview of
   a 120-column layout and made the layout look broken.
+- **`tcell.ColorDefault` is not a background, it is a hole.** It means "whatever
+  the terminal has", and a translucent terminal then shows the desktop through the
+  text. Set a real ground, set `tview.Styles` too - a drop-down's list and a page's
+  frame take theirs from there - and never use a `nil` Flex item as a margin,
+  because nil paints nothing.
 - **tview paints a field's whole width**, so a field sized to the terminal is a
   bar of background, not a field. Cap each one at what its contents need.
 - **tview reads `[` as the start of a colour tag.** A literal `[x]` is swallowed;

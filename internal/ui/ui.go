@@ -61,7 +61,23 @@ type UI struct {
 }
 
 // New builds the interface from what a launch should start from.
+// paintGround makes the ground apply to primitives this file never touches: the
+// list a drop-down opens, the frame around a page. Without it those come up in the
+// terminal's own colours and the screen looks half-painted.
+func paintGround() {
+	tview.Styles.PrimitiveBackgroundColor = groundColor
+	tview.Styles.ContrastBackgroundColor = fieldColor
+	tview.Styles.MoreContrastBackgroundColor = lineColor
+	tview.Styles.PrimaryTextColor = inkColor
+	tview.Styles.SecondaryTextColor = markColor
+	tview.Styles.TertiaryTextColor = ink3Color
+	tview.Styles.BorderColor = lineColor
+	tview.Styles.TitleColor = markColor
+	tview.Styles.InverseTextColor = groundColor
+}
+
 func New(version string, options scan.Options, profile string) *UI {
+	paintGround()
 	u := &UI{
 		version:      version,
 		options:      options,
@@ -484,14 +500,24 @@ func textView() *tview.TextView {
 
 // centred puts a primitive in the middle of the screen without a modal's shadow.
 func centred(inner tview.Primitive, width, height int) tview.Primitive {
+	// Boxes rather than nil for the margins: a nil item paints nothing, so on a
+	// translucent terminal the space around an overlay stays see-through.
 	row := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
+		AddItem(ground(), 0, 1, false).
 		AddItem(inner, width, 0, true).
-		AddItem(nil, 0, 1, false)
-	return tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
+		AddItem(ground(), 0, 1, false)
+	frame := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(ground(), 0, 1, false).
 		AddItem(row, height, 0, true).
-		AddItem(nil, 0, 1, false)
+		AddItem(ground(), 0, 1, false)
+	frame.SetBackgroundColor(groundColor)
+	return frame
+}
+
+func ground() *tview.Box {
+	box := tview.NewBox()
+	box.SetBackgroundColor(groundColor)
+	return box
 }
 
 func itoa(value int) string {
