@@ -1,11 +1,8 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 	"strings"
-
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/smagew/whatsrisky/internal/ai"
 	"github.com/smagew/whatsrisky/internal/config"
@@ -19,31 +16,9 @@ type probeRow struct {
 	detail string
 }
 
-type probeResult struct{ rows []probeRow }
-
-// buildRows is the form. Every entry maps onto a scan.Options field, so a setting
-// that exists here must exist in the CLI too.
-// collect reads the form back into options. The form's variables are live, so
-// this is cheap and safe to call on every frame - the side panel depends on it.
-func (m *Model) collect() scan.Options { return m.values.apply(m.options) }
-
-// loadInto rebuilds the form around a different set of options - loading a
-// profile, for instance. Rebuilt rather than refilled, because a huh field binds
-// to its variable when it is constructed.
-func (m *Model) loadInto(options scan.Options) {
-	name := ""
-	if m.values != nil {
-		name = m.values.profileName
-	}
-	m.options = options
-	m.values = newFormValues(options)
-	m.values.profileName = name
-	m.form = m.values.form(m.formWidth(), m.bodyHeight())
-}
-
-// probe asks each scanner whether it is there. In a goroutine, because a version
-// check spawns processes.
-func probe() tea.Msg {
+// probe asks each scanner whether it is there. Off the drawing goroutine, because
+// a version check spawns processes.
+func (u *UI) probe() {
 	config := runner.Config{Target: ".", WorkDir: os.TempDir(), AIProvider: "claude-cli"}
 	rows := make([]probeRow, 0, len(scan.AllTools))
 	for _, name := range scan.AllTools {
@@ -60,63 +35,86 @@ func probe() tea.Msg {
 		}
 		rows = append(rows, entry)
 	}
-	return probeResult{rows: rows}
+	u.update(func() {
+		u.probes = rows
+		u.probing = false
+	})
 }
 
-// warnings are what to say before the scan runs, not after. Anything that would
-// surprise the user belongs here.
-func (m *Model) warnings(options scan.Options) []string {
+// warnings is everything worth saying before a scan rather than after it. Plain
+// sentences: the panel adds the bullets, and nothing here uses a word the user
+// would have to look up.
+func (u *UI) warnings(options scan.Options) []string {
 	var out []string
-	for _, problem := range options.Validate(isDirectory) {
-		out = append(out, badStyle.Render("• ")+problem)
-	}
+	out = append(out, options.Validate(isDirectory)...)
+
 	if options.HasTool("ai") {
-		out = append(out, warnStyle.Render("• ")+"the ai pass spends tokens on your account")
+		out = append(out, "the ai pass spends money on your account")
 		backend, err := ai.New(options.AIProvider, orDot(options.Path), os.TempDir())
 		switch {
 		case err != nil:
-			out = append(out, badStyle.Render("• ")+err.Error())
+			out = append(out, err.Error())
 		default:
 			if ready, reason := backend.Available(); !ready {
-				out = append(out, badStyle.Render("• ")+reason)
+				out = append(out, reason)
 			}
 			if !backend.Agentic() {
 				if options.AIMode == "review" || options.AIMode == "both" {
-					out = append(out, badStyle.Render("• ")+options.AIProvider+
-						" cannot review a diff — use full")
+					out = append(out, options.AIProvider+
+						" cannot review a diff — choose the whole folder")
 				}
-				out = append(out, dimStyle.Render("• this backend sees only the files we send it"))
+				out = append(out, "this backend sees only the files we send it")
 			} else if firstNonEmptyString(options.Model, backend.DefaultModel()) == "opus" {
-				out = append(out, dimStyle.Render("• opus is the priciest pass; sonnet is ~5x cheaper"))
+				out = append(out, "opus is the priciest pass; sonnet is ~5x cheaper")
 			}
 		}
 	}
-	if options.Diff != "" && options.HasTool("trivy") {
-		out = append(out, dimStyle.Render("• trivy ignores --diff (CVEs are manifest-wide)"))
+	for _, entry := range u.probes {
+		if entry.found || !options.HasTool(entry.name) {
+			continue
+		}
+		out = append(out, entry.name+" is not installed, so "+whatItCovers(entry.name)+
+			" will not be checked — the report will say so")
 	}
-	if count := len(options.EffectiveExcludes()); count > 0 {
-		out = append(out, dimStyle.Render(fmt.Sprintf("• skipping %d pattern(s)", count)))
+	if options.Diff != "" && options.HasTool("trivy") {
+		out = append(out, "trivy ignores --diff: it checks dependency versions, which are not per-change")
 	}
 	if len(out) == 0 {
-		out = append(out, okStyle.Render("ready to run"))
+		out = append(out, "ready to run")
 	}
 	return out
 }
 
-// saveProfile stores the form under the name in the profile field.
-func (m *Model) saveProfile() string {
-	name := strings.TrimSpace(m.values.profileName)
+// whatItCovers says what is lost when a scanner is missing, in the terms of the
+// thing that goes unchecked rather than the name of the tool.
+func whatItCovers(tool string) string {
+	switch tool {
+	case "semgrep":
+		return "the code itself"
+	case "trivy":
+		return "dependency versions and container images"
+	case "gitleaks":
+		return "secrets, including the ones in git history"
+	case "ai":
+		return "the review pass"
+	}
+	return tool
+}
+
+// saveProfile stores the settings under the name in the last field.
+func (u *UI) saveProfile() string {
+	name := strings.TrimSpace(u.values.profileName)
 	if name == "" {
-		return "type a profile name first"
+		return "type a name in 'save these settings as' first"
 	}
-	if err := config.SaveProfile(name, m.collect()); err != nil {
-		return "saving the profile: " + err.Error()
+	if err := config.SaveProfile(name, u.collect()); err != nil {
+		return "saving the settings: " + err.Error()
 	}
-	m.profile = name
+	u.profile = name
 	return "saved '" + name + "' — the next launch starts from it"
 }
 
-// profileNames is the saved list, for the side panel.
+// profileNames is the saved list, for the panel.
 func profileNames() []string { return config.ProfileNames() }
 
 func isDirectory(path string) bool {
