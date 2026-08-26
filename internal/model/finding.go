@@ -37,7 +37,19 @@ const (
 	SourceIaC        = "iac"
 	SourceContainer  = "container"
 	SourceCI         = "ci-config"
+	// SourceNetwork is a live address a network or perimeter scan looked at, as
+	// opposed to a file on disk. surface, testssl, nuclei, zap, ffuf and llm-recon
+	// all report against it.
+	SourceNetwork = "live-target"
 )
+
+// networkTools produce findings about a live address, not a file. Listed here in
+// the base package because the source of a finding is a model concern; kept in step
+// with scan.NetTools by hand (a small, rarely-changing set).
+var networkTools = map[string]bool{
+	"surface": true, "testssl": true, "nuclei": true,
+	"zap": true, "ffuf": true, "llm-recon": true,
+}
 
 var (
 	containerFile = regexp.MustCompile(`(?i)(^|/)(dockerfile|containerfile)|docker-compose|compose\.ya?ml`)
@@ -47,6 +59,9 @@ var (
 
 // InferSource decides which artifact class a finding belongs to.
 func InferSource(tool, pass, file string) string {
+	if networkTools[tool] {
+		return SourceNetwork
+	}
 	if tool == "gitleaks" {
 		if pass == "git" {
 			return SourceGitHistory

@@ -198,6 +198,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Network findings now have a source of their own.** A finding's *source* — the
+  axis the report groups and filters by — is inferred from its tool, and every tool
+  added this release (surface, testssl, nuclei, zap, ffuf, llm-recon) fell through
+  to `source-code`, so a TLS or header problem on a live address read as a code
+  problem. They are now `live-target`. *found by* was already correct — it shows the
+  tool that reported the finding. No other stale mapping was found: the report's
+  category, source and detector filters are all built from the findings, not a
+  hardcoded list.
 - **The install button runs the right command.** gowitness is not a Homebrew
   formula (`brew install gowitness` fails); it is `go install
   github.com/sensepost/gowitness@latest`. The install commands are now an explicit
