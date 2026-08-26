@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/smagew/whatsrisky/internal/ai"
@@ -12,8 +13,25 @@ import (
 
 // A section is a heading inside the form. tview has no such item, so it is a
 // label with no field - written once here rather than at every use.
-func heading(form *tview.Form, title string) {
-	form.AddTextView(markTag+"── "+title+resetTag, "", 0, 1, true, false)
+// heading puts the section name in the label column and what it is for in the
+// value column. Both in the label would make the heading the widest label in the
+// form, and every value on the screen would line up after it.
+func heading(form *tview.Form, title, about string) {
+	form.AddTextView(markTag+"── "+title+resetTag, dimTag+about+resetTag, 0, 1, true, false)
+}
+
+// about is what each section is for, in one short phrase. On the heading line, so
+// explaining a section costs no vertical room - and vertical room is what decides
+// whether every setting fits on one screen.
+var about = map[string]string{
+	"Project":                "what to scan",
+	"Scanners":               "each one off is a gap the report will admit to",
+	"AI review":              "opt-in, and it spends your money",
+	"Output":                 "html to read, json for other tools",
+	"What we do not look at": "ctrl+i lists the 49 we always skip",
+	"Filtering":              "what to hide, and what should fail a build",
+	"Details":                "leave these alone unless you have a reason",
+	"Profile":                "ctrl+s stores everything above under this name",
 }
 
 // field is one row of the form, described rather than built, so the same list can
@@ -22,6 +40,12 @@ type field struct {
 	section string
 	build   func(form *tview.Form, width int)
 }
+
+// fieldWidth is how wide one field may be. tview paints the whole width, so a
+// field sized to the terminal is a bar of background running off to the right -
+// which reads as a redaction rather than as somewhere to type. The cap is per
+// field: a path needs room, a model name does not.
+func fieldWidth(room, want int) int { return minInt(want, maxInt(10, room)) }
 
 // fields is every setting on the screen, in reading order: what to scan, then
 // what runs, then what comes out, then what is left out, then the details.
@@ -32,16 +56,16 @@ func (u *UI) fields() []field {
 	v := u.values
 	return []field{
 		{"Project", func(f *tview.Form, w int) {
-			f.AddInputField("project folder", v.path, w, nil, func(text string) { v.path = text })
+			input(f, 44, "project folder", v.path, "/path/to/the/project", w, func(text string) { v.path = text })
 		}},
 		{"Project", func(f *tview.Form, w int) {
-			f.AddInputField("only these changes", v.diff, w, nil, func(text string) { v.diff = text })
+			input(f, 20, "only these changes", v.diff, "main..HEAD", w, func(text string) { v.diff = text })
 		}},
 
-		{"Scanners", func(f *tview.Form, w int) { u.toolBox(f, "semgrep") }},
-		{"Scanners", func(f *tview.Form, w int) { u.toolBox(f, "trivy") }},
-		{"Scanners", func(f *tview.Form, w int) { u.toolBox(f, "gitleaks") }},
-		{"Scanners", func(f *tview.Form, w int) { u.toolBox(f, "ai") }},
+		{"Scanners", func(f *tview.Form, w int) {
+			f.AddFormItem(newChips("which ones", scan.AllTools, u.values.tools,
+				func(string, bool) { u.refresh() }))
+		}},
 
 		{"AI review", func(f *tview.Form, w int) {
 			labels := []string{"claude-cli — reads the folder itself", "openai — sees only what we send"}
@@ -49,7 +73,7 @@ func (u *UI) fields() []field {
 				func(_ string, index int) { v.aiProvider = at(ai.Providers, index) })
 		}},
 		{"AI review", func(f *tview.Form, w int) {
-			f.AddInputField("model", v.aiModel, w, nil, func(text string) { v.aiModel = text })
+			input(f, 22, "model", v.aiModel, "blank = the default", w, func(text string) { v.aiModel = text })
 		}},
 		{"AI review", func(f *tview.Form, w int) {
 			modes := []string{"full", "review", "both"}
@@ -58,19 +82,19 @@ func (u *UI) fields() []field {
 				func(_ string, index int) { v.aiMode = at(modes, index) })
 		}},
 
-		{"Output", func(f *tview.Form, w int) { u.formatBox(f, "html") }},
-		{"Output", func(f *tview.Form, w int) { u.formatBox(f, "md") }},
-		{"Output", func(f *tview.Form, w int) { u.formatBox(f, "json") }},
 		{"Output", func(f *tview.Form, w int) {
-			f.AddInputField("save reports in", v.outDir, w, nil, func(text string) { v.outDir = text })
+			f.AddFormItem(newChips("formats", scan.FormatChoices, u.values.formats,
+				func(string, bool) { u.refresh() }))
+		}},
+		{"Output", func(f *tview.Form, w int) {
+			input(f, 34, "save reports in", v.outDir, "blank = ./whatsrisky-reports", w, func(text string) { v.outDir = text })
 		}},
 		{"Output", func(f *tview.Form, w int) {
 			u.yesNo(f, "open when done", &v.openReport)
 		}},
 
 		{"What we do not look at", func(f *tview.Form, w int) {
-			f.AddInputField("your folders and files", v.ignorePaths, w, nil,
-				func(text string) { v.ignorePaths = text })
+			input(f, 34, "your folders and files", v.ignorePaths, "build, *.min.js", w, func(text string) { v.ignorePaths = text })
 		}},
 		{"What we do not look at", func(f *tview.Form, w int) {
 			u.yesNo(f, "the usual noise", &v.ignoreNoise)
@@ -86,10 +110,10 @@ func (u *UI) fields() []field {
 		}},
 
 		{"Details", func(f *tview.Form, w int) {
-			f.AddInputField("semgrep rules", v.semgrep, w, nil, func(text string) { v.semgrep = text })
+			input(f, 26, "semgrep rules", v.semgrep, "auto", w, func(text string) { v.semgrep = text })
 		}},
 		{"Details", func(f *tview.Form, w int) {
-			f.AddInputField("trivy passes", v.trivy, w, nil, func(text string) { v.trivy = text })
+			input(f, 22, "trivy passes", v.trivy, "vuln,misconfig", w, func(text string) { v.trivy = text })
 		}},
 		{"Details", func(f *tview.Form, w int) {
 			modes := []string{"auto", "dir", "git"}
@@ -107,22 +131,9 @@ func (u *UI) fields() []field {
 		}},
 
 		{"Profile", func(f *tview.Form, w int) {
-			f.AddInputField("save these settings as", v.profileName, w, nil,
-				func(text string) { v.profileName = text })
+			input(f, 20, "save these settings as", v.profileName, "a name", w, func(text string) { v.profileName = text })
 		}},
 	}
-}
-
-// toolBox is one scanner. Turning one off is a gap the report will admit to, so
-// the label says what the scanner is for rather than only its name.
-func (u *UI) toolBox(form *tview.Form, tool string) {
-	form.AddCheckbox(tool, u.values.tools[tool],
-		func(on bool) { u.values.tools[tool] = on; u.refresh() })
-}
-
-func (u *UI) formatBox(form *tview.Form, format string) {
-	form.AddCheckbox(format, u.values.formats[format],
-		func(on bool) { u.values.formats[format] = on; u.refresh() })
 }
 
 // yesNo is a named value rather than a checkbox: tview draws an unchecked box as
@@ -141,7 +152,19 @@ func (u *UI) yesNo(form *tview.Form, label string, target *bool) {
 
 // newForm lays the fields out. Sections are headings in a single column, not
 // pages: you came to change one setting, not to walk through all of them.
-func (u *UI) newForm(fields []field, fieldWidth int) *tview.Form {
+// input is a text field with an example in it while it is empty.
+func input(form *tview.Form, want int, label, value, example string, room int, set func(string)) {
+	form.AddInputField(label, value, fieldWidth(room, want), nil, set)
+	item := form.GetFormItem(form.GetFormItemCount() - 1)
+	if field, ok := item.(*tview.InputField); ok {
+		field.SetPlaceholder(example).
+			SetPlaceholderTextColor(lineColor)
+	}
+}
+
+// newForm lays out one column. withAction puts the run button at the end of it -
+// a key hint is not a button, and the old interface had one you could click.
+func (u *UI) newForm(fields []field, width int, withAction bool) *tview.Form {
 	form := tview.NewForm().SetItemPadding(0)
 	form.SetBackgroundColor(groundColor)
 	form.SetLabelColor(ink3Color).
@@ -154,9 +177,15 @@ func (u *UI) newForm(fields []field, fieldWidth int) *tview.Form {
 	for _, entry := range fields {
 		if entry.section != section {
 			section = entry.section
-			heading(form, section)
+			heading(form, section, about[section])
 		}
-		entry.build(form, fieldWidth)
+		entry.build(form, width)
+	}
+	if withAction {
+		form.AddButton("▶ run scan", func() { u.start() })
+		form.SetButtonBackgroundColor(passColor).
+			SetButtonTextColor(tcell.ColorBlack).
+			SetButtonsAlign(tview.AlignLeft)
 	}
 	return form
 }

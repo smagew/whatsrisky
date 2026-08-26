@@ -27,6 +27,17 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **The scanners and the output formats are each a row of chips** —
+  `[x] semgrep [x] trivy [x] gitleaks [ ] ai` — instead of one checkbox per row.
+  tview has no such item, so this is the one widget written by hand here: it
+  implements the form-item contract, moves with left and right, toggles with
+  space, and lands a click on the chip pointed at rather than on the row. Five
+  rows saved, which is what decides whether a terminal gets one column of
+  settings or two.
+- **An empty field says what belongs in it** — `main..HEAD`,
+  `build, *.min.js`, `blank = the default` — and each section says what it is
+  for, on the heading line so it costs no vertical room.
+- **A run button you can click.** A key hint is not a button.
 - **The 49 folders and files we always skip are listed, not just counted**
   (`ctrl+i`). The list is read from `internal/exclude.Defaults`, so it cannot
   drift from the one that does the skipping, and it says how to scan one of them
@@ -39,6 +50,16 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Fields are as wide as their contents need, not as wide as the terminal.**
+  tview paints a field's whole width, so one sized to a 200-column terminal was
+  sixty-five characters of background running off to the right - which reads as a
+  redaction bar rather than as somewhere to type. A path gets 44 columns, a model
+  name 22.
+- A section's description sits in the value column, not the label. In the label
+  it was the widest label in the form, and every value on the screen lined up
+  after it.
+- A ticked chip keeps its tick: tview reads square brackets as colour markup, so
+  an unescaped `[x]` was swallowed.
 - A problem that blocks a scan — a path that is not a directory — is on the
   always-visible line, not only in a panel a small terminal hides.
 - A scanner that did not run no longer has "0 findings" written next to it in the

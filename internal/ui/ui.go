@@ -149,8 +149,8 @@ func (u *UI) layout() {
 		if u.hasPanel() {
 			room -= u.panelWidth()
 		}
-		left := u.newForm(fields[:half], maxInt(8, room/2-22))
-		right := u.newForm(fields[half:], maxInt(8, room/2-22))
+		left := u.newForm(fields[:half], maxInt(8, room/2-22), false)
+		right := u.newForm(fields[half:], maxInt(8, room/2-22), true)
 		u.forms = []*tview.Form{left, right}
 		content = tview.NewFlex().AddItem(left, 0, 1, true).AddItem(right, 0, 1, false)
 		if u.hasPanel() {
@@ -161,7 +161,7 @@ func (u *UI) layout() {
 		}
 	} else {
 		panelWidth := u.panelWidth()
-		form := u.newForm(fields, maxInt(16, u.width-panelWidth-30))
+		form := u.newForm(fields, maxInt(16, u.width-panelWidth-30), true)
 		u.forms = []*tview.Form{form}
 
 		u.dressPanel()

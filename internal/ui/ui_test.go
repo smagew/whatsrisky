@@ -26,6 +26,16 @@ func newUI(t *testing.T, options scan.Options, profile string) *UI {
 	return New("0.4.0", options, profile)
 }
 
+// lineWith returns the rendered line that first mentions text.
+func lineWith(view, text string) string {
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, text) {
+			return line
+		}
+	}
+	return ""
+}
+
 // screenOf renders the interface at a size, laying it out first.
 func screenOf(u *UI, width, height int) string {
 	u.width, u.height = width, height
@@ -290,22 +300,83 @@ func TestABadPathBlocksTheRun(t *testing.T) {
 
 // --- 7: the mouse ---------------------------------------------------
 
-func TestAClickTogglesAScannerAndReachesTheCommand(t *testing.T) {
+func TestAClickTogglesTheScannerItLandsOn(t *testing.T) {
+	// The chip row is the one widget written here rather than taken from tview, so
+	// a click has to land on the chip pointed at - not on the row.
 	options := scan.NewOptions()
 	options.Path = "/p"
 	u := newUI(t, options, "")
-	_ = screenOf(u, 120, 36)
+	_ = screenOf(u, 160, 44)
 
-	box := u.mustItem(t, "gitleaks")
-	before := u.collect().HasTool("gitleaks")
-	x, y, _, _ := box.GetRect()
-	click(box, x+1, y)
+	row, ok := u.mustItem(t, "which ones").(*chips)
+	if !ok {
+		t.Fatal("the scanners are not a chip row")
+	}
+	x, y, _, _ := row.GetInnerRect()
+	// gitleaks is the third chip; its column is where the row says it is.
+	offset := 0
+	for _, name := range []string{"semgrep", "trivy"} {
+		offset += len(name) + 6
+	}
+	click(row, x+row.labelWidth+offset+1, y)
 
-	if u.collect().HasTool("gitleaks") == before {
-		t.Error("clicking the scanner did not turn it off")
+	if u.collect().HasTool("gitleaks") {
+		t.Error("clicking gitleaks did not turn it off")
+	}
+	if u.collect().HasTool("semgrep") != true || u.collect().HasTool("trivy") != true {
+		t.Error("the click turned off a chip it did not land on")
 	}
 	if got := u.collect().Normalized().CommandLine(); !strings.Contains(got, "--tools") {
 		t.Errorf("the click did not reach the command: %s", got)
+	}
+}
+
+func TestTheChipRowMovesAndTogglesFromTheKeyboard(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = "/p"
+	u := newUI(t, options, "")
+	_ = screenOf(u, 160, 44)
+
+	row := u.mustItem(t, "which ones").(*chips)
+	press := func(key tcell.Key, r rune) {
+		row.InputHandler()(tcell.NewEventKey(key, r, tcell.ModNone), func(tview.Primitive) {})
+	}
+	press(tcell.KeyRight, 0)
+	press(tcell.KeyRight, 0)
+	press(tcell.KeyRune, ' ') // gitleaks off
+	if u.collect().HasTool("gitleaks") {
+		t.Error("space did not turn the chip under the cursor off")
+	}
+	press(tcell.KeyLeft, 0)
+	press(tcell.KeyRune, ' ') // trivy off
+	if u.collect().HasTool("trivy") {
+		t.Error("moving left and toggling hit the wrong chip")
+	}
+	if !u.collect().HasTool("semgrep") {
+		t.Error("semgrep was never touched and should still be on")
+	}
+	// The cursor must not run off either end.
+	for i := 0; i < 8; i++ {
+		press(tcell.KeyLeft, 0)
+	}
+	press(tcell.KeyRune, ' ')
+	if u.collect().HasTool("semgrep") {
+		t.Error("the cursor should have stopped on the first chip")
+	}
+}
+
+func TestATickedChipKeepsItsTick(t *testing.T) {
+	// tview reads square brackets as a colour tag, so an unescaped "[x]" is
+	// swallowed and every ticked chip renders bare.
+	options := scan.NewOptions()
+	options.Path = "/p"
+	u := newUI(t, options, "")
+	view := screenOf(u, 160, 44)
+	if !strings.Contains(view, "[x] semgrep") {
+		t.Errorf("a ticked chip does not show its tick:\n%s", lineWith(view, "which ones"))
+	}
+	if !strings.Contains(view, "[ ] ai") {
+		t.Errorf("an unticked chip does not show an empty box:\n%s", lineWith(view, "which ones"))
 	}
 }
 

@@ -162,6 +162,19 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   directly - `root.SetRect(...)` then `root.Draw(screen)`. Going through
   `Application` races its own first frame, which produced an 80-column preview of
   a 120-column layout and made the layout look broken.
+- **tview paints a field's whole width**, so a field sized to the terminal is a
+  bar of background, not a field. Cap each one at what its contents need.
+- **tview reads `[` as the start of a colour tag.** A literal `[x]` is swallowed;
+  `tview.Escape` is the fix. Found by writing the chip row and seeing every ticked
+  chip render bare.
+- **A form item's label sets the alignment for the whole form.** Putting a section
+  description in the label made it the widest label and pushed every value on the
+  screen out to its width; descriptions belong in the value column.
+- **Python's Textual has no equal in Go.** It is a full app framework - CSS, a
+  layout engine, reactive state - and the Go ecosystem has widget toolkits
+  (tview) and event loops (bubbletea) but nothing with a styling language. Bordered
+  fields and chip rows come free there and are hand-written here. Worth knowing
+  before promising a screen will look like the 0.2.0 one did.
 - **A squash merge plus a long-lived branch is a conflict machine.** Squashing
   leaves main with the content but not the commits, so the branch it came from is
   not an ancestor of anything. Keep committing to that branch and every later
