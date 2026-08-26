@@ -31,7 +31,12 @@ All notable changes to this project are documented here. This project follows
     call per asset across an estate is a cost to ask for with `--passes`.
   - Authorization is required and sharper than for a single target: you are stating
     you may scan the domain and every host under it.
-  - `doctor` now reports the discovery tools too.
+  - **gowitness screenshots.** Each live asset is loaded in a headless browser and
+    pictured; the shot is matched back to its asset and shown in the HTML report's
+    new estate panel, so a forgotten admin panel is obvious at a glance.
+    Observational — a browser loading the page — so no `--net-active`. The estate
+    report is a page plus a screenshots directory beside it, rather than one file.
+  - `doctor` now reports the discovery and screenshot tools too.
 
 ### Notes
 

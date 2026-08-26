@@ -74,19 +74,29 @@ func cmdPerimeter(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	// One base for the report and the screenshots, so the pictures sit beside the
+	// report and the relative paths in it resolve.
+	base := perimeter.Slug(domain) + "-" + time.Now().Format("20060102-150405")
+
+	// Screenshots before the scan, so each asset carries its picture into the
+	// report. Observational (a headless browser loading the page), so no gate.
+	if note, shotErr := perimeter.Screenshot(assets, dir, base+"-shots",
+		time.Duration(*timeout)*time.Second, say); shotErr != nil {
+		fmt.Fprintf(stderr, "gowitness: %v\n", shotErr)
+	} else if note != "" {
+		notes = append(notes, note)
+	}
 	printInventory(stdout, assets, notes)
 
 	cfg := perimeter.Config{
 		Domain: domain, NetActive: *netActive, AIProvider: *aiProvider, AIModel: *modelName,
-		Timeout: time.Duration(*timeout) * time.Second, WorkDir: workDir, Progress: say,
+		Timeout: time.Duration(*timeout) * time.Second, WorkDir: workDir, ScanID: base, Progress: say,
 	}
 	if *passes != "" {
 		cfg.Passes = splitList(*passes)
 	}
 	result := perimeter.Scan(cfg, assets, notes)
 	result.Excludes = nil
-
-	base := result.ScanID
 	var written []string
 	for _, f := range formats {
 		path := filepath.Join(dir, base+"."+f)

@@ -21,6 +21,7 @@ type Config struct {
 	AIModel    string
 	Timeout    time.Duration
 	WorkDir    string
+	ScanID     string // when set, the report uses it; lets screenshots share the base
 	Progress   Progress
 }
 
@@ -34,10 +35,14 @@ var DefaultPasses = []string{"surface", "testssl", "nuclei"}
 // from in its location, so the report reads per-asset without a new schema.
 func Scan(cfg Config, assets []Asset, notes []string) model.Report {
 	stamp := time.Now()
+	scanID := cfg.ScanID
+	if scanID == "" {
+		scanID = Slug(cfg.Domain) + "-" + stamp.Format("20060102-150405")
+	}
 	report := model.Report{
 		ProjectName: cfg.Domain,
 		ProjectPath: cfg.Domain,
-		ScanID:      slug(cfg.Domain) + "-" + stamp.Format("20060102-150405"),
+		ScanID:      scanID,
 		StartedAt:   stamp.Format("2006-01-02 15:04:05"),
 		Status:      model.StatusRunning,
 		Assets:      assets,
@@ -135,7 +140,9 @@ func statusRank(status string) int {
 	}
 }
 
-func slug(domain string) string {
+// Slug makes a domain safe for a filename, shared so a caller can build a matching
+// base for the report and the screenshots.
+func Slug(domain string) string {
 	var b strings.Builder
 	for _, r := range domain {
 		switch {

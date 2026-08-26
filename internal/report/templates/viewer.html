@@ -109,6 +109,18 @@
   .gaps li { font-size: 13px; color: var(--ink-2); }
   .scanners { margin: 16px 0 0; font-size: 13px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
   .scanners span b { color: var(--ink-2); font-weight: 500; }
+  .estate { margin: 18px 0 0; }
+  .estate h2 { font-size: 14px; font-weight: 600; color: var(--ink-2); margin: 0 0 10px; }
+  .estate-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .asset { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: var(--panel); }
+  .asset.dead { opacity: 0.6; }
+  .asset a.shot { display: block; background: var(--sunken); }
+  .asset img { display: block; width: 100%; height: 132px; object-fit: cover; object-position: top; }
+  .asset .noshot { display: flex; align-items: center; justify-content: center; height: 132px; color: var(--ink-3); font-size: 13px; }
+  .asset .body { padding: 9px 11px; font-size: 13px; }
+  .asset .host { color: var(--ink); font-weight: 600; word-break: break-all; }
+  .asset .sub { color: var(--ink-3); margin-top: 3px; }
+  .asset .code { color: var(--ink-2); }
   .ok { color: var(--pass); }
   .bad { color: var(--flag); }
   .pending { color: var(--caution); }
@@ -198,6 +210,7 @@
     <div class="strip" id="strip"></div>
     <div id="gapsbox"></div>
     <div class="scanners" id="scanners"></div>
+    <div id="estate"></div>
   </header>
 
   <nav class="controls">
@@ -403,6 +416,54 @@ function renderHeader() {
     if (t.status === "ok") span.append(document.createTextNode(" · " + t.findings + " · " + Math.round(t.duration_s || 0) + "s"));
     scanners.append(span);
   });
+
+  renderEstate();
+}
+
+// renderEstate shows what a perimeter scan mapped: a card per host, its screenshot
+// when gowitness took one, so a forgotten panel is visible at a glance. Empty for a
+// single-target or filesystem scan, so the section simply does not appear.
+function renderEstate() {
+  const box = document.getElementById("estate");
+  box.textContent = "";
+  const assets = R.assets || [];
+  if (!assets.length) return;
+  const alive = assets.filter((a) => a.alive).length;
+
+  const wrap = el("div", "estate");
+  wrap.append(el("h2", null, "Estate — " + assets.length + " asset" + (assets.length === 1 ? "" : "s") + ", " + alive + " alive"));
+  const grid = el("div", "estate-grid");
+  assets.forEach((a) => {
+    const card = el("div", "asset" + (a.alive ? "" : " dead"));
+    if (a.screenshot) {
+      const link = el("a", "shot");
+      link.href = a.url || a.screenshot;
+      link.target = "_blank";
+      link.rel = "noopener";
+      const img = el("img");
+      img.src = a.screenshot;
+      img.alt = "screenshot of " + a.host;
+      img.loading = "lazy";
+      link.append(img);
+      card.append(link);
+    } else if (a.alive) {
+      card.append(el("div", "noshot", "no screenshot"));
+    }
+    const body = el("div", "body");
+    body.append(el("div", "host", a.host));
+    if (a.alive) {
+      const sub = el("div", "sub");
+      sub.append(el("span", "code", "HTTP " + (a.status || "?")));
+      if ((a.tech || []).length) sub.append(document.createTextNode(" · " + a.tech.join(", ")));
+      body.append(sub);
+    } else {
+      body.append(el("div", "sub", "did not answer over HTTP"));
+    }
+    card.append(body);
+    grid.append(card);
+  });
+  wrap.append(grid);
+  box.append(wrap);
 }
 
 function fillFilters() {
