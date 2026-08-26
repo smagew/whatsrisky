@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,6 +15,62 @@ import (
 	"github.com/smagew/whatsrisky/internal/scan"
 )
 
+// toolStatus is the machine-readable form of a probe, for the desktop UI.
+type toolStatus struct {
+	Name    string `json:"name"`
+	Found   bool   `json:"found"`
+	Version string `json:"version"`
+	Covers  string `json:"covers"`
+	Hint    string `json:"hint"`
+	Install string `json:"install"` // the command to install it, or "" if we cannot
+}
+
+// doctorJSON prints the tool status as a JSON array, the surface the desktop reads
+// to show what will run and to offer installs.
+func doctorJSON(probes []probe, stdout *os.File) int {
+	out := make([]toolStatus, 0, len(probes))
+	for _, entry := range probes {
+		out = append(out, toolStatus{
+			Name: entry.name, Found: entry.found, Version: entry.version,
+			Covers: entry.covers, Hint: entry.hint,
+			Install: installCommand(entry.name, entry.found),
+		})
+	}
+	body, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return 1
+	}
+	fmt.Fprintln(stdout, string(body))
+	return 0
+}
+
+// installOne installs a single tool by name, so the desktop can offer a button per
+// missing tool. It runs the same package manager doctor --install uses.
+func installOne(name string, stdout, stderr *os.File) int {
+	if !installableNames[name] {
+		fmt.Fprintf(stderr, "whatsrisky cannot install %q for you\n", name)
+		return 1
+	}
+	command := installCommand(name, false)
+	if command == "" {
+		fmt.Fprintf(stderr, "no known install command for %q on this platform\n", name)
+		return 1
+	}
+	if _, err := exec.LookPath("brew"); err != nil {
+		fmt.Fprintln(stderr, "Homebrew not found; install it, or install the tool yourself.")
+		return 1
+	}
+	fmt.Fprintf(stdout, "running: %s\n", command)
+	parts := strings.Fields(command)
+	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	if err := cmd.Run(); err != nil {
+		return 1
+	}
+	fmt.Fprintf(stdout, "installed %s\n", name)
+	return 0
+}
+
 // probe is what doctor reports about one scanner.
 type probe struct {
 	name    string
@@ -21,6 +78,37 @@ type probe struct {
 	version string
 	hint    string
 	covers  string
+}
+
+// brewPackage is the Homebrew spec for a tool where it differs from the tool's own
+// name, so a one-click install runs the right formula or cask.
+var brewPackage = map[string]string{
+	"testssl": "brew install testssl",
+	"zap":     "brew install --cask owasp-zap",
+}
+
+// installCommand is how to install a tool on this platform, or "" when whatsrisky
+// cannot do it for you (a non-Homebrew system, or a thing like an API key).
+func installCommand(name string, found bool) string {
+	if found || runtime.GOOS != "darwin" {
+		return ""
+	}
+	if spec, ok := brewPackage[name]; ok {
+		return spec
+	}
+	// Everything else installs as its own name.
+	if _, known := installableNames[name]; known {
+		return "brew install " + name
+	}
+	return ""
+}
+
+// installableNames is the set whatsrisky knows how to install: the scanners and the
+// perimeter tools, all Homebrew formulae. "ai" is not here — you cannot brew a key.
+var installableNames = map[string]bool{
+	"semgrep": true, "trivy": true, "gitleaks": true,
+	"testssl": true, "nuclei": true, "zap": true, "ffuf": true,
+	"subfinder": true, "dnsx": true, "httpx": true, "gowitness": true, "katana": true,
 }
 
 func probeTools() []probe {
@@ -77,11 +165,20 @@ func cmdDoctor(args []string, stdout, stderr *os.File) int {
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	install := flags.Bool("install", false, "install the missing scanners with the platform package manager")
+	asJSON := flags.Bool("json", false, "print the tool status as JSON (for the desktop UI)")
+	installTool := flags.String("install-tool", "", "install one named tool and exit (for the desktop UI)")
 	if err := flags.Parse(args); err != nil {
 		return 1
 	}
 
+	if *installTool != "" {
+		return installOne(*installTool, stdout, stderr)
+	}
+
 	probes := probeTools()
+	if *asJSON {
+		return doctorJSON(probes, stdout)
+	}
 	fmt.Fprintln(stdout, "scanner    found  version / how to get it")
 	var missing []probe
 	for _, entry := range probes {

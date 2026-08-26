@@ -115,6 +115,57 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
     });
 }
 
+// doctor returns the tool inventory as JSON, so the window can show what will run
+// and offer to install what is missing.
+#[tauri::command]
+fn doctor(bin: Option<String>) -> Result<String, String> {
+    let out = Command::new(binary(&bin))
+        .args(["doctor", "--json"])
+        .output()
+        .map_err(|err| err.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+// install_tool installs one named tool, streaming the package manager's output to
+// the window, then reports done. The engine owns which command to run.
+#[tauri::command]
+fn install_tool(app: AppHandle, name: String, bin: Option<String>) {
+    let program = binary(&bin);
+    thread::spawn(move || {
+        let mut child = match Command::new(&program)
+            .args(["doctor", "--install-tool", &name])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(err) => {
+                let _ = app.emit("install-done", (name.clone(), -1, format!("{err}")));
+                return;
+            }
+        };
+        if let Some(stderr) = child.stderr.take() {
+            let app = app.clone();
+            let name = name.clone();
+            thread::spawn(move || {
+                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    let _ = app.emit("install-line", (name.clone(), line));
+                }
+            });
+        }
+        if let Some(stdout) = child.stdout.take() {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let _ = app.emit("install-line", (name.clone(), line));
+            }
+        }
+        let code = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+        let _ = app.emit("install-done", (name, code, String::new()));
+    });
+}
+
 // open_report opens a finished report in the operating system's default handler,
 // so the full HTML viewer - the same one the CLI writes - is what the user reads.
 #[tauri::command]
@@ -132,7 +183,12 @@ fn open_report(path: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![run_scan, open_report])
+        .invoke_handler(tauri::generate_handler![
+            run_scan,
+            open_report,
+            doctor,
+            install_tool
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the whatsrisky window");
 }

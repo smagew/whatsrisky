@@ -16,9 +16,13 @@ All notable changes to this project are documented here. This project follows
   viewer the CLI produces). The command on screen *is* the argument list that runs,
   so it cannot drift from the scan. Tauri over Electron to keep the footprint to a
   system webview and a thin Rust shell, in the spirit of the single Go binary.
-  Not launched here (no display); the Rust shell compiles against Tauri v2 and the
-  frontend is plain checked JS. Native folder picker and embedded report view are
-  the next steps.
+  It shows a **tool inventory** (from `doctor --json`): what is installed, and an
+  **Install** button for each missing tool that runs the package manager for you
+  (`doctor --install-tool`). During a scan it shows **per-tool progress** — which
+  passes will run, which is running, and how long each took — parsed from a new
+  `scan --events` NDJSON stream. Not launched here (no display); the Rust shell
+  compiles against Tauri v2 and the frontend is plain checked JS. Native folder
+  picker and embedded report view are the next steps.
 
 ### Changed
 
@@ -54,7 +58,11 @@ All notable changes to this project are documented here. This project follows
     its front door. The crawl stays on the asset's own host and is capped; it is a
     lot of ordinary GETs, so it is opt-in. The other passes still look at the asset
     itself.
-  - `doctor` now reports the discovery, screenshot and crawl tools too.
+  - `doctor` now reports the discovery, screenshot and crawl tools too, and gains
+  `--json` (machine-readable status with an install command per tool) and
+  `--install-tool NAME` (install one tool), which the desktop window uses.
+- `scan --events` emits progress as JSON lines, so a front end can show which pass
+  is running and how long each took.
 
 ### Notes
 

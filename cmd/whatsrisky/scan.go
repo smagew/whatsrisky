@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -61,6 +62,7 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 		quiet        = flags.Bool("quiet", false, "print only the written report paths")
 		jsonStdout   = flags.Bool("json-stdout", false, "write the JSON report to stdout and nothing else")
 		showExcl     = flags.Bool("show-excludes", false, "print the effective skip list and exit")
+		eventsJSON   = flags.Bool("events", false, "emit progress as JSON lines on stderr (for the desktop UI)")
 		noDefaults   = flags.Bool("no-default-excludes", false, "also scan node_modules, vendor, dist and the rest")
 		target       = flags.String("target", "", "scan a live address (http/https URL) instead of a folder")
 		authorized   = flags.Bool("i-am-authorized", false, "confirm you may scan the target address (required for a network scan)")
@@ -231,6 +233,7 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 
 	report.Version = Version
 	view := newConsole(stdout, stderr, *quiet || *jsonStdout)
+	view.events = *eventsJSON
 	outcome, err := scan.Run(options, view.handle)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -242,9 +245,20 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 
 // console renders a scan for a terminal. Quiet mode prints nothing but the paths,
 // because stdout may belong to a JSON payload.
+type eventJSON struct {
+	Kind      string   `json:"kind"`
+	Tool      string   `json:"tool,omitempty"`
+	Message   string   `json:"message,omitempty"`
+	Status    string   `json:"status,omitempty"`
+	Findings  int      `json:"findings,omitempty"`
+	DurationS float64  `json:"duration_s,omitempty"`
+	Tools     []string `json:"tools,omitempty"`
+}
+
 type console struct {
 	stdout, stderr *os.File
 	quiet          bool
+	events         bool
 	model          *progress.Model
 }
 
@@ -253,6 +267,18 @@ func newConsole(stdout, stderr *os.File, quiet bool) *console {
 }
 
 func (c *console) handle(event scan.Event) {
+	if c.events {
+		// A machine-readable line for the desktop, prefixed so it is easy to pick
+		// out of the human progress that may share the stream.
+		payload := eventJSON{
+			Kind: event.Kind, Tool: event.Tool, Message: event.Message,
+			Status: event.Status, Findings: event.Findings,
+			DurationS: event.Duration.Seconds(), Tools: event.Tools,
+		}
+		if body, err := json.Marshal(payload); err == nil {
+			fmt.Fprintln(c.stderr, "EVENT "+string(body))
+		}
+	}
 	if c.quiet {
 		return
 	}

@@ -16,7 +16,12 @@ const els = {
   nollm: $("nollm"), crawl: $("crawl"), minsev: $("minsev"),
   command: $("command"), run: $("run"), status: $("status"),
   log: $("log"), reports: $("reports"),
+  tools: $("tools"), toolprog: $("toolprog"),
 };
+
+// The tool inventory from `doctor --json`, and the live per-tool progress rows.
+let inventory = [];
+const progress = new Map(); // tool -> { status, started, detail, took, findings }
 
 const MODES = {
   folder: { label: "Project folder", placeholder: "/path/to/project", hint: "The folder to scan on this machine." },
@@ -32,6 +37,7 @@ function argv() {
     const a = [target];
     if (els.noai.checked) a.push("--no-ai");
     if (min) a.push("--min-severity", min);
+    a.push("--events");
     return a.filter(Boolean);
   }
   if (state.mode === "url") {
@@ -40,6 +46,7 @@ function argv() {
     if (els.netactive.checked) a.push("--net-active");
     if (els.nollm.checked) a.push("--no-llm");
     if (min) a.push("--min-severity", min);
+    a.push("--events");
     return a.filter(Boolean);
   }
   // domain
@@ -51,8 +58,8 @@ function argv() {
 }
 
 function refresh() {
-  const a = argv();
-  els.command.textContent = "whatsrisky " + a.join(" ");
+  const shown = argv().filter((x) => x !== "--events");
+  els.command.textContent = "whatsrisky " + shown.join(" ");
   // A network or domain scan cannot run unauthorized; the button says so.
   const needsAuth = state.mode !== "folder";
   const missingTarget = !els.target.value.trim();
@@ -73,6 +80,61 @@ function setMode(mode) {
   els.target.placeholder = MODES[mode].placeholder;
   els.targetHint.textContent = MODES[mode].hint;
   refresh();
+}
+
+async function loadDoctor() {
+  els.tools.textContent = "loading…";
+  try {
+    const raw = await invoke("doctor");
+    inventory = JSON.parse(raw);
+  } catch (err) {
+    els.tools.textContent = "could not read tool status: " + err;
+    return;
+  }
+  renderTools();
+}
+
+function renderTools() {
+  els.tools.textContent = "";
+  inventory.forEach((tool) => {
+    const row = document.createElement("div");
+    row.className = "tool";
+    const dot = document.createElement("span");
+    dot.className = "dot " + (tool.found ? "yes" : "no");
+    row.append(dot);
+    row.append(el("span", "name", tool.name));
+    row.append(el("span", "covers", tool.found ? (tool.version || "installed") : (tool.covers || "")));
+    if (!tool.found && tool.install) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Install";
+      button.addEventListener("click", () => installTool(tool.name, button));
+      row.append(button);
+    } else if (!tool.found) {
+      row.append(el("span", "covers", "manual: " + (tool.hint || "")));
+    }
+    els.tools.append(row);
+  });
+}
+
+async function installTool(name, button) {
+  button.disabled = true;
+  button.textContent = "installing…";
+  line("installing " + name + "…", "progress");
+  try {
+    await invoke("install_tool", { name });
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "Install";
+    line("install failed: " + err, "progress");
+  }
+}
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text != null) node.textContent = text;
+  return node;
 }
 
 function line(text, stream) {
@@ -100,6 +162,50 @@ async function run() {
   }
 }
 
+function handleEvent(ev) {
+  if (ev.kind === "info" && ev.tools) {
+    progress.clear();
+    ev.tools.forEach((t) => progress.set(t, { status: "pending", detail: "" }));
+    renderProgress();
+    return;
+  }
+  if (ev.kind === "tool_start") {
+    progress.set(ev.tool, { status: "running", started: Date.now(), detail: "" });
+    renderProgress();
+    return;
+  }
+  if (ev.kind === "tool_progress") {
+    const row = progress.get(ev.tool) || { status: "running" };
+    row.detail = ev.message || "";
+    progress.set(ev.tool, row);
+    renderProgress();
+    return;
+  }
+  if (ev.kind === "tool_done") {
+    progress.set(ev.tool, {
+      status: ev.status === "ok" ? "ok" : "bad",
+      took: ev.duration_s || 0,
+      findings: ev.findings || 0,
+      detail: ev.status === "ok" ? (ev.findings || 0) + " finding(s)" : ev.status,
+    });
+    renderProgress();
+    return;
+  }
+}
+
+function renderProgress() {
+  els.toolprog.textContent = "";
+  progress.forEach((row, tool) => {
+    const line = el("div", "prow");
+    const st = el("span", "st " + (row.status === "pending" ? "" : row.status), row.status);
+    line.append(st);
+    line.append(el("span", "nm", tool));
+    line.append(el("span", "detail", row.detail || ""));
+    if (row.took != null) line.append(el("span", "took", Math.round(row.took) + "s"));
+    els.toolprog.append(line);
+  });
+}
+
 function showReports(reports) {
   els.reports.textContent = "";
   reports.filter((p) => /\.html$/.test(p)).forEach((path) => {
@@ -119,7 +225,20 @@ function wire() {
     .forEach((el) => { el.addEventListener("input", refresh); el.addEventListener("change", refresh); });
   els.run.addEventListener("click", run);
 
-  listen("scan-line", (event) => line(event.payload.text, event.payload.stream));
+  listen("scan-line", (event) => {
+    const text = event.payload.text;
+    if (text.startsWith("EVENT ")) {
+      handleEvent(JSON.parse(text.slice(6)));
+      return;
+    }
+    line(text, event.payload.stream);
+  });
+  listen("install-line", (event) => line(event.payload[0] + ": " + event.payload[1], "progress"));
+  listen("install-done", (event) => {
+    const [name, code] = event.payload;
+    line(name + (code === 0 ? " installed" : " install exited " + code), "progress");
+    loadDoctor();
+  });
   listen("scan-done", (event) => {
     const { code, reports, error } = event.payload;
     if (error) {
@@ -137,6 +256,7 @@ function wire() {
   });
 
   setMode("folder");
+  loadDoctor();
 }
 
 wire();

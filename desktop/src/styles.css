@@ -71,3 +71,24 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
 .status { font-size: 13px; margin-top: 10px; }
 .status.ok { color: var(--pass); }
 .status.bad { color: var(--flag); }
+
+/* tool inventory */
+.tools { display: flex; flex-direction: column; gap: 6px; }
+.tool { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
+.tool .dot { width: 8px; height: 8px; border-radius: 5px; flex: none; }
+.tool .dot.yes { background: var(--pass); }
+.tool .dot.no { background: var(--ink-3); }
+.tool .name { font-weight: 600; }
+.tool .covers { color: var(--ink-3); flex: 1; }
+.tool button { padding: 4px 10px; background: var(--mark); color: var(--mark-ink); border: none; border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; }
+.tool button:disabled { opacity: 0.5; cursor: default; }
+/* live per-tool progress */
+.toolprog { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.prow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.prow .st { width: 68px; color: var(--ink-3); }
+.prow .st.running { color: var(--mark); }
+.prow .st.ok { color: var(--pass); }
+.prow .st.bad { color: var(--flag); }
+.prow .nm { font-weight: 600; min-width: 90px; }
+.prow .detail { color: var(--ink-3); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prow .took { color: var(--ink-3); font-variant-numeric: tabular-nums; }
