@@ -42,6 +42,34 @@ fn binary(explicit: &Option<String>) -> String {
     "whatsrisky".to_string()
 }
 
+// augmentedPath is PATH with the usual install locations prepended, because a
+// macOS GUI app inherits a minimal PATH: without this, a tool installed by
+// Homebrew (/opt/homebrew/bin, /usr/local/bin) or by `go install` (~/go/bin) is
+// present on disk but invisible to the scan the window launches.
+fn augmented_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut dirs = vec![
+        format!("{home}/go/bin"),
+        format!("{home}/.local/bin"),
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/local/sbin".to_string(),
+    ];
+    if let Ok(existing) = std::env::var("PATH") {
+        dirs.push(existing);
+    }
+    dirs.join(":")
+}
+
+// tool builds a Command for the whatsrisky binary (or a helper) with the augmented
+// PATH, so everything the window spawns can find what is installed.
+fn tool(program: &str) -> Command {
+    let mut command = Command::new(program);
+    command.env("PATH", augmented_path());
+    command
+}
+
 // run_scan launches the binary with the given arguments and streams its output to
 // the window as `scan-line` events, then a single `scan-done`. It returns
 // immediately; the work happens on a thread so the UI never blocks.
@@ -49,7 +77,7 @@ fn binary(explicit: &Option<String>) -> String {
 fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
     let program = binary(&bin);
     thread::spawn(move || {
-        let mut child = match Command::new(&program)
+        let mut child = match tool(&program)
             .args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -119,7 +147,7 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
 // and offer to install what is missing.
 #[tauri::command]
 fn doctor(bin: Option<String>) -> Result<String, String> {
-    let out = Command::new(binary(&bin))
+    let out = tool(&binary(&bin))
         .args(["doctor", "--json"])
         .output()
         .map_err(|err| err.to_string())?;
@@ -132,7 +160,7 @@ fn doctor(bin: Option<String>) -> Result<String, String> {
 // models returns the AI models per provider as JSON, for the model picker.
 #[tauri::command]
 fn models(bin: Option<String>) -> Result<String, String> {
-    let out = Command::new(binary(&bin))
+    let out = tool(&binary(&bin))
         .arg("models")
         .output()
         .map_err(|err| err.to_string())?;
@@ -148,7 +176,7 @@ fn models(bin: Option<String>) -> Result<String, String> {
 fn install_tool(app: AppHandle, name: String, bin: Option<String>) {
     let program = binary(&bin);
     thread::spawn(move || {
-        let mut child = match Command::new(&program)
+        let mut child = match tool(&program)
             .args(["doctor", "--install-tool", &name])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

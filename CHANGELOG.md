@@ -198,6 +198,15 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **The install button runs the right command.** gowitness is not a Homebrew
+  formula (`brew install gowitness` fails); it is `go install
+  github.com/sensepost/gowitness@latest`. The install commands are now an explicit
+  map — brew or go — and a command is offered only when the program it needs (brew
+  or go) is actually on PATH.
+- **The desktop window finds tools a GUI's minimal PATH hides.** A macOS app
+  inherits a bare PATH, so a Homebrew or `go install` tool was present on disk but
+  invisible to the scan the window launched. The window now runs the binary with
+  the usual install locations (`~/go/bin`, the Homebrew dirs) prepended to PATH.
 - **Ticking a folder no longer un-ticks the one before it.** tview runs a clicked
   item's handler without moving the cursor first, so a handler that read the cursor
   toggled whichever folder had been ticked previously. The index comes from the

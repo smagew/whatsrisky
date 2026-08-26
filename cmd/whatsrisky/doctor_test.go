@@ -2,35 +2,42 @@ package main
 
 import (
 	"encoding/json"
-	"runtime"
+	"os/exec"
 	"strings"
 	"testing"
 )
 
-func TestInstallableToolsHaveACommandOnMac(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("install commands are Homebrew, checked on macOS")
-	}
-	for name := range installableNames {
-		if cmd := installCommand(name, false); !strings.HasPrefix(cmd, "brew") {
-			t.Errorf("%s has no brew install command: %q", name, cmd)
+func TestInstallCommandsAreRealAndProgramGated(t *testing.T) {
+	// Every command names a program that is actually present on this machine — a
+	// button that runs a missing brew or go helps no one.
+	for name, command := range installCommands {
+		program := strings.Fields(command)[0]
+		if program != "brew" && program != "go" {
+			t.Errorf("%s installs via an unexpected program: %q", name, command)
+		}
+		// installCommand only offers it when that program is on PATH.
+		got := installCommand(name, false)
+		if _, err := exec.LookPath(program); err == nil {
+			if got != command {
+				t.Errorf("%s: with %s present, expected %q, got %q", name, program, command, got)
+			}
+		} else if got != "" {
+			t.Errorf("%s: %s absent, should offer nothing, got %q", name, program, got)
 		}
 		// A found tool never offers an install.
-		if cmd := installCommand(name, true); cmd != "" {
-			t.Errorf("%s offers an install while present: %q", name, cmd)
+		if installCommand(name, true) != "" {
+			t.Errorf("%s offers an install while present", name)
 		}
 	}
-	// A thing whatsrisky cannot install (a key) has no command.
-	if cmd := installCommand("ai", false); cmd != "" {
-		t.Errorf("ai should not be installable, got %q", cmd)
+	// gowitness is a go install, not a formula.
+	if installCommands["gowitness"] != "go install github.com/sensepost/gowitness@latest" {
+		t.Errorf("gowitness: %q", installCommands["gowitness"])
 	}
-	// testssl differs from its tool name; it is the one special case left.
-	if installCommand("testssl", false) != "brew install testssl" {
-		t.Errorf("testssl: %q", installCommand("testssl", false))
-	}
-	// zap is deliberately not one-click: the cask does not provide zap-baseline.py.
-	if installCommand("zap", false) != "" {
-		t.Errorf("zap should not offer a one-click install: %q", installCommand("zap", false))
+	// Things whatsrisky cannot install for you have no command at all.
+	for _, name := range []string{"ai", "zap", "surface", "llm-recon"} {
+		if _, ok := installCommands[name]; ok {
+			t.Errorf("%s should not be one-click installable", name)
+		}
 	}
 }
 

@@ -102,17 +102,14 @@ func doctorJSON(probes []probe, stdout *os.File) int {
 // installOne installs a single tool by name, so the desktop can offer a button per
 // missing tool. It runs the same package manager doctor --install uses.
 func installOne(name string, stdout, stderr *os.File) int {
-	if !installableNames[name] {
-		fmt.Fprintf(stderr, "whatsrisky cannot install %q for you\n", name)
-		return 1
-	}
 	command := installCommand(name, false)
 	if command == "" {
-		fmt.Fprintf(stderr, "no known install command for %q on this platform\n", name)
-		return 1
-	}
-	if _, err := exec.LookPath("brew"); err != nil {
-		fmt.Fprintln(stderr, "Homebrew not found; install it, or install the tool yourself.")
+		if _, known := installCommands[name]; !known {
+			fmt.Fprintf(stderr, "whatsrisky cannot install %q for you\n", name)
+		} else {
+			program := strings.Fields(installCommands[name])[0]
+			fmt.Fprintf(stderr, "%s is needed to install %q and is not on PATH\n", program, name)
+		}
 		return 1
 	}
 	fmt.Fprintf(stdout, "running: %s\n", command)
@@ -135,34 +132,39 @@ type probe struct {
 	covers  string
 }
 
-// brewPackage is the Homebrew spec for a tool where it differs from the tool's own
-// name, so a one-click install runs the right formula or cask.
-var brewPackage = map[string]string{
-	"testssl": "brew install testssl",
+// installCommands is exactly how to install each tool. Most are Homebrew formulae;
+// gowitness is not one, so it is a `go install`. A tool absent here is one
+// whatsrisky cannot install for you (a key like "ai", or the ZAP scripts).
+var installCommands = map[string]string{
+	"semgrep":   "brew install semgrep",
+	"trivy":     "brew install trivy",
+	"gitleaks":  "brew install gitleaks",
+	"testssl":   "brew install testssl",
+	"nuclei":    "brew install nuclei",
+	"ffuf":      "brew install ffuf",
+	"subfinder": "brew install subfinder",
+	"dnsx":      "brew install dnsx",
+	"httpx":     "brew install httpx",
+	"katana":    "brew install katana",
+	"gowitness": "go install github.com/sensepost/gowitness@latest",
 }
 
-// installCommand is how to install a tool on this platform, or "" when whatsrisky
-// cannot do it for you (a non-Homebrew system, or a thing like an API key).
+// installCommand is how to install a tool here, or "" when we cannot: the tool is
+// already present, is not one we install (an API key, the ZAP scripts), or the
+// program its command needs (brew or go) is not on PATH.
 func installCommand(name string, found bool) string {
-	if found || runtime.GOOS != "darwin" {
+	if found {
 		return ""
 	}
-	if spec, ok := brewPackage[name]; ok {
-		return spec
+	command := installCommands[name]
+	if command == "" {
+		return ""
 	}
-	// Everything else installs as its own name.
-	if _, known := installableNames[name]; known {
-		return "brew install " + name
+	program := strings.Fields(command)[0]
+	if _, err := exec.LookPath(program); err != nil {
+		return ""
 	}
-	return ""
-}
-
-// installableNames is the set whatsrisky knows how to install: the scanners and the
-// perimeter tools, all Homebrew formulae. "ai" is not here — you cannot brew a key.
-var installableNames = map[string]bool{
-	"semgrep": true, "trivy": true, "gitleaks": true,
-	"testssl": true, "nuclei": true, "ffuf": true,
-	"subfinder": true, "dnsx": true, "httpx": true, "gowitness": true, "katana": true,
+	return command
 }
 
 func probeTools() []probe {
