@@ -162,6 +162,12 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   directly - `root.SetRect(...)` then `root.Draw(screen)`. Going through
   `Application` races its own first frame, which produced an 80-column preview of
   a 120-column layout and made the layout look broken.
+- **A squash merge plus a long-lived branch is a conflict machine.** Squashing
+  leaves main with the content but not the commits, so the branch it came from is
+  not an ancestor of anything. Keep committing to that branch and every later
+  merge replays work main already has, conflicting on every file touched twice -
+  four times in a row here, in the same files. Branch fresh from main for each
+  pull request, which is what the branching rule above already says.
 - **A tag pushed by `GITHUB_TOKEN` does not trigger other workflows.** GitHub
   blocks that recursion, so a tag-then-release split would silently never release.
   The release workflow creates the tag and publishes in one job for this reason.
