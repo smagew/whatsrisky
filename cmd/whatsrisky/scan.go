@@ -253,6 +253,7 @@ type eventJSON struct {
 	Findings  int      `json:"findings,omitempty"`
 	DurationS float64  `json:"duration_s,omitempty"`
 	Tools     []string `json:"tools,omitempty"`
+	Paths     []string `json:"paths,omitempty"`
 }
 
 type console struct {
@@ -274,6 +275,7 @@ func (c *console) handle(event scan.Event) {
 			Kind: event.Kind, Tool: event.Tool, Message: event.Message,
 			Status: event.Status, Findings: event.Findings,
 			DurationS: event.Duration.Seconds(), Tools: event.Tools,
+			Paths: event.Paths,
 		}
 		if body, err := json.Marshal(payload); err == nil {
 			fmt.Fprintln(c.stderr, "EVENT "+string(body))

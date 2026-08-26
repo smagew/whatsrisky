@@ -91,7 +91,12 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
 .tool button { padding: 4px 10px; background: var(--mark); color: var(--mark-ink); border: none; border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; }
 .tool button:disabled { opacity: 0.5; cursor: default; }
 /* live per-tool progress */
+.bar { height: 6px; background: var(--sunken); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; margin-bottom: 10px; }
+.bar-fill { height: 100%; width: 0; background: var(--mark); transition: width 0.3s ease; }
 .toolprog { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.prow .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--line); border-top-color: var(--mark); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .prow .spin { animation: none; } }
 .prow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .prow .st { width: 68px; color: var(--ink-3); }
 .prow .st.running { color: var(--mark); }
@@ -100,3 +105,5 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
 .prow .nm { font-weight: 600; min-width: 90px; }
 .prow .detail { color: var(--ink-3); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prow .took { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.prow .st.pending { color: var(--ink-3); }
+.prow .reason { color: var(--caution); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

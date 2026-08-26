@@ -46,9 +46,11 @@ const els = {
   target: $("target"), targetLabel: $("targetLabel"), targetHint: $("targetHint"),
   authorized: $("authorized"), netactive: $("netactive"),
   exclude: $("exclude"), model: $("model"), modelField: $("modelField"), modelList: $("modelList"),
+  wordlist: $("wordlist"), wordlistField: $("wordlistField"),
   minsev: $("minsev"), command: $("command"), run: $("run"), status: $("status"),
   log: $("log"), reports: $("reports"), tools: $("tools"), toolprog: $("toolprog"),
   modedesc: $("modedesc"),
+  bar: $("bar"), barFill: $("barFill"),
 };
 
 const MODES = {
@@ -80,6 +82,11 @@ function installed(name) {
 function aiSelected() {
   const pass = AI_PASS[tabMode()];
   return pass && useSet().has(pass);
+}
+
+// ffufSelected is whether ffuf is ticked (address tab), so the wordlist field shows.
+function ffufSelected() {
+  return tabMode() === "address" && useSet().has("ffuf");
 }
 
 // toolsFlag turns the ticked set into the fewest, clearest flags: nothing when it
@@ -129,6 +136,7 @@ function argv() {
     if (els.netactive.checked) a.push("--net-active");
     a.push(...toolsFlag());
     if (aiSelected() && model) a.push("--model", model);
+    if (ffufSelected() && els.wordlist.value.trim()) a.push("--wordlist", els.wordlist.value.trim());
     if (min) a.push("--min-severity", min);
     a.push("--events");
     return a.filter(Boolean);
@@ -156,6 +164,7 @@ function refresh() {
   const shown = argv().filter((x) => x !== "--events");
   els.command.textContent = "whatsrisky " + shown.join(" ");
   els.modelField.hidden = !aiSelected();
+  els.wordlistField.hidden = !ffufSelected();
   const needsAuth = state.mode !== "folder";
   const missingTarget = !els.target.value.trim();
   const missingAuth = needsAuth && !els.authorized.checked;
@@ -294,6 +303,8 @@ async function run() {
   els.status.className = "status";
   els.toolprog.textContent = "";
   progress.clear();
+  els.barFill.style.width = "0";
+  els.bar.hidden = true;
   els.run.disabled = true;
   const args = argv();
   line("whatsrisky " + args.filter((x) => x !== "--events").join(" "), "out");
@@ -309,10 +320,11 @@ async function run() {
 function handleEvent(ev) {
   if (ev.kind === "info" && ev.tools) {
     progress.clear();
-    ev.tools.forEach((t) => progress.set(t, { status: "pending", detail: "" }));
+    ev.tools.forEach((t) => progress.set(t, { status: "pending" }));
+    els.bar.hidden = false;
     renderProgress();
   } else if (ev.kind === "tool_start") {
-    progress.set(ev.tool, { status: "running", detail: "" });
+    progress.set(ev.tool, { status: "running" });
     renderProgress();
   } else if (ev.kind === "tool_progress") {
     const row = progress.get(ev.tool) || { status: "running" };
@@ -320,25 +332,60 @@ function handleEvent(ev) {
     progress.set(ev.tool, row);
     renderProgress();
   } else if (ev.kind === "tool_done") {
+    const ok = ev.status === "ok";
     progress.set(ev.tool, {
-      status: ev.status === "ok" ? "ok" : "bad",
+      status: ok ? "ok" : "bad",
       took: ev.duration_s || 0,
-      detail: ev.status === "ok" ? (ev.findings || 0) + " finding(s)" : ev.status,
+      detail: ok ? (ev.findings || 0) + " finding(s)" : "",
+      // Why it did not run — "missing" alone does not say the wordlist or key is
+      // what is absent.
+      reason: ok ? "" : (ev.message || ev.status || ""),
     });
     renderProgress();
+  } else if (ev.kind === "report") {
+    // The definitive completion signal, carried on the event stream so it does not
+    // depend on the process's stdout reaching EOF (which the agentic AI pass can
+    // hold open). scan-done still fires later with the exit code.
+    finish(ev.paths || []);
   }
+}
+
+// finish marks the run done and offers the reports. Safe to call more than once
+// (from the report event and again from scan-done).
+function finish(reports) {
+  progress.forEach((row) => { if (row.status === "running" || row.status === "pending") row.status = "ok"; });
+  renderProgress();
+  els.barFill.style.width = "100%";
+  if (reports && reports.length) showReports(reports);
+  if (!els.status.textContent) {
+    els.status.textContent = "Finished.";
+    els.status.className = "status ok";
+  }
+  refresh();
 }
 
 function renderProgress() {
   els.toolprog.textContent = "";
+  let done = 0;
+  const total = progress.size;
   progress.forEach((row, tool) => {
+    if (row.status === "ok" || row.status === "bad") done++;
     const prow = el("div", "prow");
-    prow.append(el("span", "st " + (row.status === "pending" ? "" : row.status), row.status));
+    if (row.status === "running") {
+      prow.append(el("span", "spin"));
+    } else {
+      prow.append(el("span", "st " + row.status, row.status));
+    }
     prow.append(el("span", "nm", tool));
-    prow.append(el("span", "detail", row.detail || ""));
+    if (row.reason) {
+      prow.append(el("span", "reason", row.reason));
+    } else {
+      prow.append(el("span", "detail", row.detail || ""));
+    }
     if (row.took != null) prow.append(el("span", "took", Math.round(row.took) + "s"));
     els.toolprog.append(prow);
   });
+  if (total > 0) els.barFill.style.width = Math.round((done / total) * 100) + "%";
 }
 
 function showReports(reports) {
@@ -355,7 +402,7 @@ function wire() {
   document.querySelectorAll("#modes button").forEach((b) => {
     b.addEventListener("click", () => setMode(b.dataset.mode));
   });
-  [els.target, els.authorized, els.netactive, els.exclude, els.model, els.minsev]
+  [els.target, els.authorized, els.netactive, els.exclude, els.model, els.wordlist, els.minsev]
     .forEach((e) => { e.addEventListener("input", refresh); e.addEventListener("change", refresh); });
   els.run.addEventListener("click", run);
 
@@ -377,7 +424,7 @@ function wire() {
     } else if (code === 0 || code === 2) {
       els.status.textContent = code === 2 ? "Finished — findings at or above the fail-on threshold." : "Finished.";
       els.status.className = "status ok";
-      showReports(reports || []);
+      finish(reports || []);
     } else {
       els.status.textContent = "The scan exited with code " + code + ".";
       els.status.className = "status bad";

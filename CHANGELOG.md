@@ -198,6 +198,18 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **The window reliably shows a scan as finished, and offers the report.** Even
+  with the process-exit fix, completion still depended on timing the agentic AI
+  pass could defeat. whatsrisky now carries the report paths on its event stream
+  (the `report` event), and the window finishes on that — off stderr, which is
+  flushed before any lingering pipe — rather than on the process's stdout closing.
+- **A pass that could not run says why, not just "missing".** ffuf with no wordlist
+  showed a bare "missing"; the window now shows the reason it carries ("needs a
+  wordlist", "pass --net-active"), and the Address tab has a **wordlist** field when
+  ffuf is ticked so it can actually run.
+- **Live progress: a bar and a spinner.** The progress panel shows an overall bar
+  (tools done of total) and a spinner beside the tool that is running, not just
+  text.
 - **ZAP runs via Docker, so it is usable without a fiddly install.** whatsrisky
   calls zap-baseline.py / zap-full-scan.py, which the Homebrew cask and the desktop
   app do not put on PATH — the scripts ship inside the ZAP Docker image. ZAP now
