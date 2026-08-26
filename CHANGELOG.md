@@ -5,6 +5,54 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-26
+
+### Changed
+
+- **The interface is rebuilt on [tview](https://github.com/rivo/tview).** tview is a
+  widget toolkit, so the checkboxes, lists, fields, focus handling and mouse are
+  the library's rather than ours. Bubble Tea, which the last two versions used, is
+  an event loop: with it the form had to be written by hand, and every defect
+  reported in the interface was in that hand-written code.
+- **Every setting is on the screen at once.** No pages and no scrolling: the
+  arrangement is chosen by whether the settings actually fit — one column beside
+  the panel when the terminal is tall enough, two columns when it is not.
+- **The mouse works throughout.** A click ticks a scanner, opens a list, picks
+  from it, or puts the cursor in a field. Only text is still typed.
+- **No jargon on the screen.** "pattern", "exclusion" and "glob" are gone. The
+  section is called *what we do not look at*, and a test fails if any of those
+  words comes back.
+- Labels say what a setting is for: *project folder*, *only these changes*, *hide
+  anything below*, *fail the build at*.
+
+### Added
+
+- **The 49 folders and files we always skip are listed, not just counted**
+  (`ctrl+i`). The list is read from `internal/exclude.Defaults`, so it cannot
+  drift from the one that does the skipping, and it says how to scan one of them
+  anyway: point whatsrisky straight at it.
+- **A scanner that is switched on but not installed is a warning before the run**,
+  worded as what goes unchecked rather than as a tool name — "gitleaks is not
+  installed, so secrets, including the ones in git history, will not be checked".
+  Absence must not read as safety on this screen either.
+- `ctrl+p` shows the panel where there is no room for it beside the form.
+
+### Fixed
+
+- A problem that blocks a scan — a path that is not a directory — is on the
+  always-visible line, not only in a panel a small terminal hides.
+- A scanner that did not run no longer has "0 findings" written next to it in the
+  log. That phrase describes a clean pass, and this was not one.
+- The reason a scanner is missing is wrapped onto its own lines instead of being
+  truncated: "not found in PATH. Install: …" is the actionable half, and the
+  ellipsis ate exactly that half.
+
+### Removed
+
+- `bubbletea`, `bubbles`, `lipgloss` and `huh`. The interface has one dependency
+  now, plus the terminal library under it.
+
+
 ## [0.3.2] - 2026-08-26
 
 ### Changed

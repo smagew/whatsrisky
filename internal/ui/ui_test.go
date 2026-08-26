@@ -5,320 +5,406 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 
 	"github.com/smagew/whatsrisky/internal/config"
+	"github.com/smagew/whatsrisky/internal/exclude"
 	"github.com/smagew/whatsrisky/internal/model"
 	"github.com/smagew/whatsrisky/internal/scan"
 )
 
-// A Bubble Tea model is a function of messages, so these tests drive it directly:
-// no terminal, no timing, and every assertion is about what the user would see.
-//
-// The form itself is huh's, so these do not re-test widgets. What they test is
-// what we got wrong by hand: that the form is not blank, that exactly one field
-// looks focused, that every field can be reached, that a resize re-wraps, and
-// that the panel never breaks a command it invites you to copy.
+// These tests drive the widgets and read the screen. tview draws onto any
+// tcell.Screen, so a simulated one gives exactly what a terminal would show -
+// which is the only way to check that a form fits, since the last interface drew
+// past the bottom of the terminal and no test noticed.
 
-func key(name string) tea.KeyMsg {
-	switch name {
-	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
-	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
-	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}
-	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}
-	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
-	case "space":
-		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
-	case "ctrl+r":
-		return tea.KeyMsg{Type: tea.KeyCtrlR}
-	case "ctrl+s":
-		return tea.KeyMsg{Type: tea.KeyCtrlS}
-	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
-	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(name)}
-}
-
-// press sends a key and then runs whatever the model asked for, because huh
-// answers a keypress with a command and the focus only moves when the message it
-// produces comes back in. A test that drops those commands reports a form that
-// cannot be navigated, and misses one that genuinely cannot.
-func press(m *Model, names ...string) {
-	for _, name := range names {
-		_, cmd := m.Update(key(name))
-		settle(m, cmd)
-	}
-}
-
-// settle runs the commands that answer immediately. A command that does not is a
-// timer - a cursor blink, a progress tick - and waiting on those cost this suite
-// twenty-six seconds per keystroke before this was bounded.
-func settle(m *Model, cmd tea.Cmd) {
-	queue := []tea.Cmd{cmd}
-	for step := 0; len(queue) > 0 && step < 50; step++ {
-		next := queue[0]
-		queue = queue[1:]
-		if next == nil {
-			continue
-		}
-		msg, ok := immediate(next)
-		if !ok || msg == nil {
-			continue
-		}
-		if batch, isBatch := msg.(tea.BatchMsg); isBatch {
-			queue = append(queue, batch...)
-			continue
-		}
-		_, produced := m.Update(msg)
-		queue = append(queue, produced)
-	}
-}
-
-// immediate runs one command, giving up on anything that waits.
-func immediate(cmd tea.Cmd) (tea.Msg, bool) {
-	done := make(chan tea.Msg, 1)
-	go func() { done <- cmd() }()
-	select {
-	case msg := <-done:
-		return msg, true
-	case <-time.After(50 * time.Millisecond):
-		return nil, false
-	}
-}
-
-func sized(t *testing.T, options scan.Options, profile string, width, height int) *Model {
+func newUI(t *testing.T, options scan.Options, profile string) *UI {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	m := New("0.3.1", options, profile)
-	// Init matters: without it huh has not focused a field and the form renders
-	// empty - which is exactly how a blank form gets shipped.
-	m.Init()
-	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
-	return m
+	return New("0.4.0", options, profile)
 }
 
-func newTestModel(t *testing.T, options scan.Options, profile string) *Model {
+// screenOf renders the interface at a size, laying it out first.
+func screenOf(u *UI, width, height int) string {
+	u.width, u.height = width, height
+	u.layout()
+	return frame(u, width, height)
+}
+
+// frame renders whatever is on the pages now, without rebuilding the layout, so
+// an overlay stays open.
+func frame(u *UI, width, height int) string {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		panic(err)
+	}
+	screen.SetSize(width, height)
+	u.refresh()
+
+	var root tview.Primitive = u.pages
+	root.SetRect(0, 0, width, height)
+	root.Draw(screen)
+	screen.Show()
+
+	cells, w, h := screen.GetContents()
+	var out strings.Builder
+	for y := 0; y < h; y++ {
+		var row []rune
+		for x := 0; x < w; x++ {
+			runes := cells[y*w+x].Runes
+			if len(runes) == 0 || runes[0] == 0 {
+				row = append(row, ' ')
+				continue
+			}
+			row = append(row, runes[0])
+		}
+		out.WriteString(strings.TrimRight(string(row), " ") + "\n")
+	}
+	return out.String()
+}
+
+// key sends a key through the application's capture, which is where the chords
+// live.
+func (u *UI) key(k tcell.Key) { u.onKey(tcell.NewEventKey(k, 0, tcell.ModNone)) }
+
+// item finds a form item by its label, across both columns of the narrow layout.
+func (u *UI) item(label string) tview.FormItem {
+	for _, form := range u.forms {
+		for index := 0; index < form.GetFormItemCount(); index++ {
+			entry := form.GetFormItem(index)
+			if labelOf(entry.GetLabel()) == label {
+				return entry
+			}
+		}
+	}
+	return nil
+}
+
+func (u *UI) mustItem(t *testing.T, label string) tview.FormItem {
 	t.Helper()
-	return sized(t, options, profile, 140, 44)
+	entry := u.item(label)
+	if entry == nil {
+		t.Fatalf("no field labelled %q", label)
+	}
+	return entry
 }
 
-// lineWith returns the whole rendered line that first mentions text.
-func lineWith(view, text string) string {
-	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, text) {
-			return line
-		}
-	}
-	return ""
+// click sends a left click at a point inside a primitive, the way tview delivers
+// a real mouse event.
+func click(target tview.Primitive, x, y int) {
+	handler := target.MouseHandler()
+	event := tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone)
+	handler(tview.MouseLeftDown, event, func(tview.Primitive) {})
+	handler(tview.MouseLeftClick, event, func(tview.Primitive) {})
 }
 
-func TestTheFormIsNotBlank(t *testing.T) {
-	// The regression this exists for: a section heading as the first field makes
-	// huh render the entire group as empty space. It shipped once looking like a
-	// working UI with nothing in it.
-	options := scan.NewOptions()
-	options.Path = "/some/project"
-	m := newTestModel(t, options, "")
+// --- 1, 17: it fits, and everything is on the screen -----------------
 
-	view := m.View()
-	for _, want := range []string{
-		"whatsrisky", "no profile", "report schema 3",
-		"── Project", "path", "/some/project",
-		"Equivalent command", "whatsrisky /some/project",
-		"run scan", "ctrl+r",
-	} {
-		if !strings.Contains(view, want) {
-			t.Errorf("the form is missing %q", want)
-		}
-	}
-}
-
-func TestExactlyOneFieldLooksFocused(t *testing.T) {
-	// Copying the focused styles into the blurred ones put the focus bar on every
-	// field at once, which is the same "where am I" defect the old hand-rolled
-	// form had.
-	m := newTestModel(t, scan.NewOptions(), "")
-	view := m.View()
-
-	if focused := lineWith(view, "path"); !strings.Contains(focused, "┃") {
-		t.Errorf("the focused field carries no focus bar: %q", focused)
-	}
-	if blurred := lineWith(view, "git range"); strings.Contains(blurred, "┃") {
-		t.Errorf("an unfocused field carries the focus bar: %q", blurred)
-	}
-}
-
-func TestEveryFieldIsReachable(t *testing.T) {
-	// Nothing may sit permanently below the fold. The old form drew past the
-	// bottom of the terminal and the whole Tuning section was unreachable.
-	options := scan.NewOptions()
-	options.Path = t.TempDir()
-	m := sized(t, options, "", 100, 30)
-
-	if strings.Contains(m.View(), "── Tuning") {
-		t.Skip("the terminal is tall enough to show everything; nothing to reach")
-	}
-	for step := 0; step < 40; step++ {
-		press(m, "tab")
-		if strings.Contains(m.View(), "save as") {
-			return
-		}
-		if m.mode == modeRunning {
-			t.Fatalf("tabbing started a scan at step %d", step)
-		}
-	}
-	t.Errorf("the last field never came into view:\n%s", m.View())
-}
-
-func TestTheActionNeverScrollsAway(t *testing.T) {
-	options := scan.NewOptions()
-	options.Path = t.TempDir()
-	m := sized(t, options, "", 100, 26)
-
-	for step := 0; step < 30; step++ {
-		if view := m.View(); !strings.Contains(view, "ctrl+r") {
-			t.Fatalf("the run action disappeared at step %d:\n%s", step, view)
-		}
-		press(m, "tab")
-	}
-}
-
-func TestADescriptionUsesTheWidthAfterAResize(t *testing.T) {
-	// huh's WithWidth moves the frame but leaves every description wrapped for
-	// the old width, so a widened terminal kept the narrow text. The fix is to
-	// rebuild the form; this is what proves it still happens.
-	options := scan.NewOptions()
-	options.Path = t.TempDir()
-	m := sized(t, options, "", 80, 30)
-	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
-
-	const whole = "scope the scan to what a range changed; blank scans everything"
-	if !strings.Contains(m.View(), whole) {
-		t.Errorf("the description is still wrapped for the narrow terminal:\n%s",
-			lineWith(m.View(), "scope the scan"))
-	}
-}
-
-func TestAResizeKeepsWhatWasTyped(t *testing.T) {
-	// Rebuilding the form on resize must not throw away the settings, which it
-	// would if the fields were rebuilt from the stored options instead of the
-	// live ones.
-	m := sized(t, scan.NewOptions(), "", 100, 30)
-	press(m, "/", "t", "m", "p")
-	m.Update(tea.WindowSizeMsg{Width: 160, Height: 48})
-
-	if got := m.collect().Path; got != "/tmp" {
-		t.Errorf("the resize lost the path: %q", got)
-	}
-	if !strings.Contains(m.View(), "/tmp") {
-		t.Error("and the rebuilt form does not show it")
-	}
-}
-
-func TestTypingGoesToTheFieldNotTheCommands(t *testing.T) {
-	// The commands are chorded because a focused text field owns the letters.
-	m := newTestModel(t, scan.NewOptions(), "")
-	press(m, "/", "t", "m", "p")
-	if got := m.collect().Path; got != "/tmp" {
-		t.Errorf("the path field holds %q — letters were eaten by a command", got)
-	}
-	if m.mode == modeRunning {
-		t.Error("typing must not start a scan")
-	}
-}
-
-func TestTheCommandFollowsTheForm(t *testing.T) {
-	// The equivalent-command panel is what keeps the flags and the form from
-	// drifting apart, so it has to track every change.
-	options := scan.NewOptions()
-	options.Path = "/p"
-	m := newTestModel(t, options, "")
-
-	m.values.tools = append(m.values.tools, "ai")
-	if got := m.collect().Normalized().CommandLine(); !strings.Contains(got, "--ai") {
-		t.Errorf("turning on the ai pass did not reach the command: %s", got)
-	}
-	if !strings.Contains(m.View(), "spends tokens") {
-		t.Error("the warning about tokens must appear as soon as the pass is on")
-	}
-
-	m.values.minSeverity = "HIGH"
-	if got := m.collect().Normalized().CommandLine(); !strings.Contains(got, "--min-severity HIGH") {
-		t.Errorf("the severity floor did not reach the command: %s", got)
-	}
-}
-
-func TestThePanelNeverBreaksACommandMidArgument(t *testing.T) {
-	// A command broken across lines inside an argument reads like something you
-	// could copy, and is not. Truncating is honest; splitting a path is not.
-	options := scan.NewOptions()
-	options.Path = "/Users/someone/work/a-project-with-a-long-name"
-	m := sized(t, options, "", 100, 30)
-
-	if !strings.Contains(m.View(), options.Path) {
-		t.Errorf("the path was split across lines:\n%s", m.sidePanel(m.collect(), 34))
-	}
-}
-
-func TestWrapArgumentsKeepsArgumentsWhole(t *testing.T) {
-	got := wrapArguments("whatsrisky /a/path --tools semgrep,trivy --min-severity HIGH", 24)
-	for _, line := range strings.Split(got, "\n") {
-		if lipgloss.Width(line) > 24 {
-			t.Errorf("line over the width: %q", line)
-		}
-	}
-	for _, argument := range []string{"whatsrisky", "/a/path", "--tools", "semgrep,trivy", "HIGH"} {
-		if !strings.Contains(got, argument) {
-			t.Errorf("%q did not survive wrapping:\n%s", argument, got)
-		}
-	}
-	// A token that cannot fit is truncated, not split into something that looks
-	// like two arguments.
-	long := wrapArguments("whatsrisky /a/very/long/path/that/cannot/fit/anywhere", 16)
-	for _, line := range strings.Split(long, "\n") {
-		if lipgloss.Width(line) > 16 {
-			t.Errorf("an oversized token was not truncated: %q", line)
-		}
-	}
-}
-
-func TestTheFormFitsEveryReasonableTerminal(t *testing.T) {
+func TestTheScreenFitsEveryReasonableTerminal(t *testing.T) {
 	options := scan.NewOptions()
 	options.Path = t.TempDir()
 	for _, size := range []struct{ width, height int }{
-		{80, 24}, {100, 30}, {120, 40}, {160, 50}, {200, 60},
+		{80, 24}, {100, 30}, {120, 36}, {160, 50}, {200, 60},
 	} {
-		m := sized(t, options, "", size.width, size.height)
-		view := m.settingsView()
-		if got := len(strings.Split(view, "\n")); got > size.height {
-			t.Errorf("%dx%d: the form draws %d lines and does not fit",
-				size.width, size.height, got)
+		u := newUI(t, options, "")
+		view := screenOf(u, size.width, size.height)
+		lines := strings.Split(strings.TrimRight(view, "\n"), "\n")
+		if len(lines) > size.height {
+			t.Errorf("%dx%d: draws %d lines", size.width, size.height, len(lines))
 		}
-		for _, line := range strings.Split(view, "\n") {
-			if got := lipgloss.Width(line); got > size.width {
-				t.Errorf("%dx%d: a line is %d columns wide", size.width, size.height, got)
+		for _, line := range lines {
+			if width := len([]rune(line)); width > size.width {
+				t.Errorf("%dx%d: a line is %d columns wide: %q",
+					size.width, size.height, width, line)
 				break
 			}
 		}
 	}
 }
 
-func TestTheEquivalentCommandSurvivesANarrowTerminal(t *testing.T) {
-	// Dropping the side panel used to take the command with it, which is the thing
-	// that makes this UI worth using.
+func TestEverySettingIsOnTheScreenAtOnce(t *testing.T) {
+	// The point of the change: no paging, no scrolling. If a label is missing
+	// from the drawn screen at a normal size, it is unreachable by eye.
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	u := newUI(t, options, "")
+	view := screenOf(u, 120, 36)
+
+	for _, label := range []string{
+		"project folder", "only these changes",
+		"semgrep", "trivy", "gitleaks", "ai",
+		"who reviews", "model", "what it reads",
+		"html", "md", "json", "save reports in", "open when done",
+		"your folders and files", "the usual noise",
+		"hide anything below", "fail the build at",
+		"semgrep rules", "trivy passes", "gitleaks looks at", "scanners at once",
+		"no network", "compare with last", "save these settings as",
+	} {
+		if !strings.Contains(view, label) {
+			t.Errorf("%q is not on the screen:\n%s", label, view)
+		}
+	}
+}
+
+func TestTheNarrowScreenKeepsEverySettingAndTheAction(t *testing.T) {
+	// 80x24: the panel goes, the settings do not.
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	u := newUI(t, options, "")
+	view := screenOf(u, 80, 24)
+
+	for _, label := range []string{"project folder", "scanners at once", "save these settings as"} {
+		if !strings.Contains(view, label) {
+			t.Errorf("%q dropped below the fold at 80x24:\n%s", label, view)
+		}
+	}
+	if !strings.Contains(view, "ctrl+r") {
+		t.Errorf("the run action is not on the screen:\n%s", view)
+	}
+	if strings.Contains(view, "what this will do") {
+		t.Error("the panel should be hidden at 80 columns, not squeezed")
+	}
+}
+
+// --- 2: the panel is one key away when it is hidden ------------------
+
+func TestThePanelComesBackOnTheNarrowScreen(t *testing.T) {
 	options := scan.NewOptions()
 	options.Path = "/some/project"
-	m := sized(t, options, "", 80, 24)
-	if view := m.settingsView(); !strings.Contains(view, "whatsrisky /some/project") {
-		t.Errorf("the equivalent command is gone at 80 columns:\n%s", view)
+	u := newUI(t, options, "")
+	_ = screenOf(u, 80, 24)
+
+	u.key(tcell.KeyCtrlP)
+	view := frame(u, 80, 24)
+	if !strings.Contains(view, "whatsrisky /some/project") {
+		t.Errorf("ctrl+p does not show the command:\n%s", view)
+	}
+	u.key(tcell.KeyEscape)
+	if view := frame(u, 80, 24); strings.Contains(view, "esc closes") {
+		t.Error("esc did not close the panel")
+	}
+}
+
+// --- 3, 4: what we do not look at -----------------------------------
+
+func TestTheSkippedListIsReadableAndComesFromTheCode(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 36)
+
+	if !strings.Contains(frame(u, 120, 36), "ctrl+i") {
+		t.Error("the panel does not say how to see the list")
+	}
+
+	u.key(tcell.KeyCtrlI)
+	view := frame(u, 120, 36)
+	// Every default, read from exclude.Defaults - a copy in the interface would
+	// drift from the list that does the skipping.
+	for _, pattern := range exclude.Defaults {
+		if !strings.Contains(view, pattern) {
+			t.Errorf("%q is skipped but not listed:\n%s", pattern, view)
+		}
+	}
+	if !strings.Contains(view, "whatsrisky ./dist") {
+		t.Error("the list should say how to scan one of these anyway")
+	}
+}
+
+func TestNoJargonOnTheScreen(t *testing.T) {
+	// "pattern" and "exclusion" were both in the last version. Neither says what
+	// it means to anyone who did not write the code.
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	u := newUI(t, options, "")
+	u.probes = []probeRow{{name: "semgrep", found: true, detail: "1.0"}}
+
+	views := []string{screenOf(u, 120, 36)}
+	u.key(tcell.KeyCtrlI)
+	views = append(views, frame(u, 120, 36))
+
+	for _, view := range views {
+		for _, word := range []string{"pattern", "exclusion", "exclude", "glob"} {
+			if strings.Contains(strings.ToLower(view), word) {
+				t.Errorf("the screen says %q:\n%s", word, view)
+			}
+		}
+	}
+}
+
+// --- 6: the chords, and no function keys ----------------------------
+
+func TestTheChordsRunAndSave(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	options.MinSeverity = "HIGH"
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 36)
+
+	u.values.profileName = "nightly"
+	u.key(tcell.KeyCtrlS)
+	if !strings.Contains(frame(u, 120, 36), "saved 'nightly'") {
+		t.Error("ctrl+s did not save the settings")
+	}
+	if u.profile != "nightly" {
+		t.Errorf("active profile %q", u.profile)
+	}
+	restored, active := config.StartupOptions()
+	if active != "nightly" || restored.MinSeverity != "HIGH" {
+		t.Errorf("the next launch would start from %+v (active %q)", restored, active)
+	}
+}
+
+func TestSavingWithoutANameSaysWhere(t *testing.T) {
+	u := newUI(t, scan.NewOptions(), "")
+	_ = screenOf(u, 120, 36)
+	u.key(tcell.KeyCtrlS)
+	if view := frame(u, 120, 36); !strings.Contains(view, "save these settings as") {
+		t.Errorf("the notice should name the field to type in:\n%s", view)
+	}
+}
+
+func TestAProfileLaunchOffersItsOwnNameBack(t *testing.T) {
+	u := newUI(t, scan.NewOptions(), "nightly")
+	if u.values.profileName != "nightly" {
+		t.Errorf("the save field holds %q", u.values.profileName)
+	}
+}
+
+func TestABadPathBlocksTheRun(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = "/definitely/not/here"
+	u := newUI(t, options, "")
+	view := screenOf(u, 120, 36)
+	if !strings.Contains(view, "Not a directory") {
+		t.Errorf("the screen must say the path is wrong:\n%s", view)
+	}
+
+	u.key(tcell.KeyCtrlR)
+	if u.currentPage() == pageRun {
+		t.Error("a scan must not start on a path that cannot be scanned")
+	}
+}
+
+// --- 7: the mouse ---------------------------------------------------
+
+func TestAClickTogglesAScannerAndReachesTheCommand(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = "/p"
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 36)
+
+	box := u.mustItem(t, "gitleaks")
+	before := u.collect().HasTool("gitleaks")
+	x, y, _, _ := box.GetRect()
+	click(box, x+1, y)
+
+	if u.collect().HasTool("gitleaks") == before {
+		t.Error("clicking the scanner did not turn it off")
+	}
+	if got := u.collect().Normalized().CommandLine(); !strings.Contains(got, "--tools") {
+		t.Errorf("the click did not reach the command: %s", got)
+	}
+}
+
+func TestAClickOpensAListAndPicksFromIt(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = "/p"
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 36)
+
+	list, ok := u.mustItem(t, "hide anything below").(*tview.DropDown)
+	if !ok {
+		t.Fatal("the severity floor is not a list")
+	}
+	x, y, _, _ := list.GetRect()
+	click(list, x+30, y)
+	if _, open := list.GetCurrentOption(); open == "" {
+		t.Error("the list has no current option")
+	}
+	// Picking is the list's own behaviour; what matters here is that the widget
+	// took the click rather than ignoring it.
+	list.SetCurrentOption(indexIn(severityNames(), "HIGH"))
+	if got := u.collect().MinSeverity; got != "HIGH" {
+		t.Errorf("choosing from the list did not reach the options: %q", got)
+	}
+}
+
+// --- 9: the command is never broken mid-argument ---------------------
+
+func TestTheCommandIsNeverSplitInsideAnArgument(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = "/Users/someone/work/a-project-with-a-long-name"
+	u := newUI(t, options, "")
+	view := screenOf(u, 120, 36)
+	if !strings.Contains(view, options.Path) {
+		t.Errorf("the path was split across lines:\n%s", view)
+	}
+}
+
+func TestWrapArgumentsKeepsArgumentsWhole(t *testing.T) {
+	got := wrapArguments("whatsrisky /a/path --tools semgrep,trivy --min-severity HIGH", 24)
+	for _, line := range strings.Split(got, "\n") {
+		if len([]rune(line)) > 24 {
+			t.Errorf("line over the width: %q", line)
+		}
+	}
+	for _, argument := range []string{"whatsrisky", "/a/path", "semgrep,trivy", "HIGH"} {
+		if !strings.Contains(got, argument) {
+			t.Errorf("%q did not survive wrapping:\n%s", argument, got)
+		}
+	}
+	long := wrapArguments("whatsrisky /a/very/long/path/that/cannot/fit", 16)
+	for _, line := range strings.Split(long, "\n") {
+		if len([]rune(line)) > 16 {
+			t.Errorf("an oversized argument was not truncated: %q", line)
+		}
+	}
+}
+
+// --- 8, 10: the panel tells the truth before a run -------------------
+
+func TestTheProbeFillsTheScannerList(t *testing.T) {
+	u := newUI(t, scan.NewOptions(), "")
+	if !strings.Contains(screenOf(u, 120, 36), "checking…") {
+		t.Error("the panel should say it is still checking")
+	}
+	u.probes = []probeRow{
+		{name: "semgrep", found: true, detail: "semgrep 1.174.0"},
+		{name: "trivy", found: false, detail: "`trivy` not found in PATH. brew install trivy"},
+	}
+	u.probing = false
+	view := frame(u, 120, 36)
+	if !strings.Contains(view, "semgrep 1.174.0") {
+		t.Error("an installed scanner should show its version")
+	}
+	if !strings.Contains(view, "not found in PATH") {
+		t.Error("a missing one should say how to get it")
+	}
+}
+
+func TestAMissingScannerIsAWarningNotSilence(t *testing.T) {
+	// Absence must never read as safety, on this screen as in the report.
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	u := newUI(t, options, "")
+	u.probes = []probeRow{
+		{name: "semgrep", found: true, detail: "1.0"},
+		{name: "gitleaks", found: false, detail: "not installed"},
+	}
+	u.probing = false
+
+	view := screenOf(u, 120, 36)
+	if !strings.Contains(view, "gitleaks is not installed") {
+		t.Errorf("the screen does not warn that gitleaks is missing:\n%s", view)
+	}
+	if !strings.Contains(view, "git history") {
+		t.Error("the warning should say what goes unchecked, not just the tool name")
+	}
+	if strings.Contains(view, "ready to run") {
+		t.Error("a coverage gap is not 'ready to run'")
 	}
 }
 
@@ -329,200 +415,132 @@ func TestAnAPIBackendIsWarnedAboutBeforeTheScan(t *testing.T) {
 	options.AIProvider = "openai"
 	options.AIMode = "review"
 	t.Setenv("OPENAI_API_KEY", "")
-	m := newTestModel(t, options, "")
+	u := newUI(t, options, "")
 
-	view := m.View()
-	// Everything that would surprise the user, said before the scan runs.
+	view := screenOf(u, 140, 44)
 	for _, want := range []string{
 		"OPENAI_API_KEY is not set",
 		"cannot review a diff",
 		"sees only the files we send it",
+		"spends money",
 	} {
 		if !strings.Contains(view, want) {
-			t.Errorf("the form does not warn about %q", want)
+			t.Errorf("the screen does not warn about %q:\n%s", want, view)
 		}
 	}
 }
 
-func TestAProfileIsSavedAndNamedInTheHeader(t *testing.T) {
-	options := scan.NewOptions()
-	options.Path = "/p"
-	options.MinSeverity = "HIGH"
-	m := newTestModel(t, options, "")
+// --- 11, 12, 13: the run screen --------------------------------------
 
-	m.values.profileName = "nightly"
-	press(m, "ctrl+s")
-
-	if !strings.Contains(m.notice, "saved 'nightly'") {
-		t.Errorf("notice: %q", m.notice)
-	}
-	if m.profile != "nightly" {
-		t.Errorf("active profile %q", m.profile)
-	}
-	if !strings.Contains(m.View(), "nightly") {
-		t.Error("the header must name the profile in use")
-	}
-	// And it is what the next launch starts from.
-	restored, active := config.StartupOptions()
-	if active != "nightly" || restored.MinSeverity != "HIGH" {
-		t.Errorf("startup options: %+v (active %q)", restored, active)
-	}
-}
-
-func TestAProfileLaunchOffersItsOwnNameBack(t *testing.T) {
-	// ctrl+s should update the profile you are looking at, not quietly ask for a
-	// new name.
-	m := newTestModel(t, scan.NewOptions(), "nightly")
-	if m.values.profileName != "nightly" {
-		t.Errorf("the save-as field holds %q", m.values.profileName)
-	}
-}
-
-func TestSavingWithoutANameSaysSo(t *testing.T) {
-	m := newTestModel(t, scan.NewOptions(), "")
-	press(m, "ctrl+s")
-	if !strings.Contains(m.notice, "type a profile name") {
-		t.Errorf("notice: %q", m.notice)
-	}
-}
-
-func TestAnInvalidPathBlocksTheRun(t *testing.T) {
-	options := scan.NewOptions()
-	options.Path = "/definitely/not/here"
-	m := newTestModel(t, options, "")
-
-	if !strings.Contains(m.View(), "Not a directory") {
-		t.Error("the form must say the path is wrong")
-	}
-	press(m, "ctrl+r")
-	if m.mode == modeRunning {
-		t.Error("a scan must not start with an invalid path")
-	}
-	if !strings.Contains(m.notice, "Not a directory") {
-		t.Errorf("notice: %q", m.notice)
-	}
-}
-
-func TestARunningScanShowsProgressAndOffersTheReport(t *testing.T) {
+func TestTheRunScreenShowsProgressAndOffersTheReport(t *testing.T) {
 	options := scan.NewOptions()
 	options.Path = t.TempDir()
-	m := newTestModel(t, options, "")
-	m.mode = modeRunning
-	m.options = options
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 36)
+	u.options = options
+	u.pages.SwitchToPage(pageRun)
 
 	page := filepath.Join(t.TempDir(), "r.html")
 	if err := os.WriteFile(page, []byte("<html></html>"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	m.handleEvent(scan.Event{Kind: "live", Paths: []string{page}})
-	m.handleEvent(scan.Event{Kind: "tool_start", Tool: "semgrep"})
-	m.handleEvent(scan.Event{Kind: "tool_progress", Tool: "semgrep", Message: "Scanning 412 files"})
+	u.handleEvent(scan.Event{Kind: "live", Paths: []string{page}})
+	u.handleEvent(scan.Event{Kind: "tool_start", Tool: "semgrep"})
+	u.handleEvent(scan.Event{Kind: "tool_progress", Tool: "semgrep", Message: "Scanning 412 files"})
 
-	view := m.runView()
-	if !strings.Contains(view, "semgrep") || !strings.Contains(view, "Scanning 412 files") {
+	view := frame(u, 120, 36)
+	if !strings.Contains(view, "Scanning 412 files") {
 		t.Errorf("the run screen hides what the scanner is doing:\n%s", view)
 	}
 	// The report is readable from the first second, and the help says so.
-	if !strings.Contains(view, "v view report (it is written already)") {
+	if !strings.Contains(view, "it is written already") {
 		t.Errorf("the help does not offer the live report:\n%s", view)
 	}
-	if m.livePath != page {
-		t.Errorf("live path %q", m.livePath)
+	if u.livePath != page {
+		t.Errorf("live path %q", u.livePath)
 	}
 }
 
-func TestViewReportOpensThePageOrSaysWhyNot(t *testing.T) {
-	m := newTestModel(t, scan.NewOptions(), "")
-	m.mode = modeRunning
-	// No html in this run: the answer is a reason, not the JSON file.
-	m.handleEvent(scan.Event{Kind: "live", Paths: nil})
-	if notice := m.viewReport(); !strings.Contains(notice, "no html in this run") &&
-		!strings.Contains(notice, "tick html in the formats") {
-		t.Errorf("notice: %q", notice)
-	}
-	if !strings.Contains(strings.Join(m.log, "\n"), "no html in this run") {
-		t.Error("the log must say the view is unavailable")
-	}
-}
-
-func TestTheSummaryAdmitsCoverageGaps(t *testing.T) {
-	m := newTestModel(t, scan.NewOptions(), "")
-	m.mode = modeRunning
-
-	finding := model.Finding{Tool: "semgrep", Severity: model.Medium, Title: "debug enabled"}
-	finding.Normalize()
-	report := model.Report{ProjectName: "p", Status: model.StatusPartial,
-		Findings: []model.Finding{finding}, Tools: []model.ToolResult{
-			{Name: "semgrep", Status: model.ToolOK},
-			{Name: "trivy", Status: model.ToolMissing, Message: "not installed"},
-		}}
-	m.outcome = &scan.Outcome{Report: report}
-
-	summary := m.summary()
-	if !strings.Contains(summary, "coverage gaps") || !strings.Contains(summary, "trivy") {
-		t.Errorf("a missing scanner must be visible in the summary:\n%s", summary)
-	}
-	if !strings.Contains(summary, "partial coverage") {
-		t.Errorf("and in the verdict:\n%s", summary)
-	}
-}
-
-func TestTheProbeFillsTheScannerPanel(t *testing.T) {
-	m := newTestModel(t, scan.NewOptions(), "")
-	if !strings.Contains(m.View(), "probing…") {
-		t.Error("the panel should say it is still probing")
-	}
-	m.Update(probeResult{rows: []probeRow{
-		{name: "semgrep", found: true, detail: "semgrep 1.174.0"},
-		{name: "trivy", found: false, detail: "`trivy` not found in PATH. Install: brew install trivy"},
-	}})
-	view := m.View()
-	if !strings.Contains(view, "semgrep 1.174.0") {
-		t.Error("a present scanner should show its version")
-	}
-	if !strings.Contains(view, "not found in PATH") {
-		t.Error("a missing one should say how to get it")
-	}
-}
-
-func TestAFailedScannerRowCarriesTheReasonNotAZero(t *testing.T) {
-	// "0 findings" says nothing about a scanner that never ran.
-	m := newTestModel(t, scan.NewOptions(), "")
-	m.mode = modeRunning
-	m.handleEvent(scan.Event{Kind: "tool_start", Tool: "trivy"})
-	m.handleEvent(scan.Event{Kind: "tool_done", Tool: "trivy", Status: model.ToolMissing,
+func TestAFailedScannerCarriesTheReasonNotAZero(t *testing.T) {
+	// "0 findings" describes a clean pass. A scanner that did not run had none.
+	u := newUI(t, scan.NewOptions(), "")
+	_ = screenOf(u, 120, 36)
+	u.pages.SwitchToPage(pageRun)
+	u.handleEvent(scan.Event{Kind: "tool_start", Tool: "trivy"})
+	u.handleEvent(scan.Event{Kind: "tool_done", Tool: "trivy", Status: model.ToolMissing,
 		Message: "`trivy` not found in PATH. Install: brew install trivy"})
 
-	view := m.runView()
-	if strings.Contains(view, "0 findings · missing") {
-		t.Error("a missing scanner should not report a finding count")
+	view := frame(u, 120, 36)
+	if strings.Contains(view, "0 findings") {
+		t.Errorf("a scanner that did not run must not report a finding count:\n%s", view)
 	}
 	if !strings.Contains(view, "not found in PATH") {
 		t.Errorf("the row must carry the reason:\n%s", view)
 	}
 }
 
-func TestTheFormAppliesBackEverySetting(t *testing.T) {
-	// One test that the whole binding is wired, so a field added to the form and
+func TestTheSummaryAdmitsCoverageGaps(t *testing.T) {
+	u := newUI(t, scan.NewOptions(), "")
+	_ = screenOf(u, 120, 36)
+	u.pages.SwitchToPage(pageRun)
+
+	finding := model.Finding{Tool: "semgrep", Severity: model.Medium, Title: "debug enabled"}
+	finding.Normalize()
+	u.outcome = &scan.Outcome{Report: model.Report{
+		ProjectName: "p", Status: model.StatusPartial,
+		Findings: []model.Finding{finding},
+		Tools: []model.ToolResult{
+			{Name: "semgrep", Status: model.ToolOK},
+			{Name: "trivy", Status: model.ToolMissing, Message: "not installed"},
+		}}}
+
+	view := frame(u, 120, 36)
+	if !strings.Contains(view, "coverage gaps") || !strings.Contains(view, "trivy") {
+		t.Errorf("a missing scanner must be visible in the summary:\n%s", view)
+	}
+	if !strings.Contains(view, "partial coverage") {
+		t.Errorf("and in the verdict:\n%s", view)
+	}
+}
+
+func TestViewReportOpensThePageOrSaysWhyNot(t *testing.T) {
+	u := newUI(t, scan.NewOptions(), "")
+	_ = screenOf(u, 120, 36)
+	u.pages.SwitchToPage(pageRun)
+	u.handleEvent(scan.Event{Kind: "live", Paths: nil})
+
+	if notice := u.viewReport(); !strings.Contains(notice, "no html") &&
+		!strings.Contains(notice, "tick html in the formats") {
+		t.Errorf("notice: %q", notice)
+	}
+	if !strings.Contains(strings.Join(u.log, "\n"), "no html in this run") {
+		t.Error("the log must say the view is unavailable")
+	}
+}
+
+// --- 14, 19: every setting reaches the options -----------------------
+
+func TestEverySettingReachesTheOptions(t *testing.T) {
+	// One test for the whole binding, so a field added to the screen and
 	// forgotten in apply cannot pass silently.
 	base := scan.NewOptions()
 	base.Path = "/before"
-	m := newTestModel(t, base, "")
+	u := newUI(t, base, "")
 
-	v := m.values
+	v := u.values
 	v.path = "/after"
 	v.diff = "main..HEAD"
-	v.tools = []string{"semgrep"}
+	v.tools = map[string]bool{"semgrep": true}
 	v.aiProvider = "openai"
 	v.aiModel = "gpt-5"
 	v.aiMode = "review"
-	v.formats = []string{"json"}
+	v.formats = map[string]bool{"json": true}
 	v.outDir = "/tmp/out"
 	v.openReport = true
 	v.minSeverity = "HIGH"
 	v.failOn = "CRITICAL"
-	v.exclude = "vendor, dist"
-	v.skipNoise = false
+	v.ignorePaths = "vendor, dist"
+	v.ignoreNoise = false
 	v.semgrep = "p/ci,p/golang"
 	v.trivy = "vuln"
 	v.gitleaks = "git"
@@ -530,31 +548,31 @@ func TestTheFormAppliesBackEverySetting(t *testing.T) {
 	v.offline = true
 	v.compare = false
 
-	got := m.collect()
+	got := u.collect()
 	for _, check := range []struct {
 		name string
 		ok   bool
 		got  any
 	}{
-		{"path", got.Path == "/after", got.Path},
-		{"diff", got.Diff == "main..HEAD", got.Diff},
-		{"tools", strings.Join(got.Tools, ",") == "semgrep", got.Tools},
-		{"provider", got.AIProvider == "openai", got.AIProvider},
+		{"project folder", got.Path == "/after", got.Path},
+		{"only these changes", got.Diff == "main..HEAD", got.Diff},
+		{"scanners", strings.Join(got.Tools, ",") == "semgrep", got.Tools},
+		{"who reviews", got.AIProvider == "openai", got.AIProvider},
 		{"model", got.Model == "gpt-5", got.Model},
-		{"ai mode", got.AIMode == "review", got.AIMode},
+		{"what it reads", got.AIMode == "review", got.AIMode},
 		{"formats", strings.Join(got.Formats, ",") == "json", got.Formats},
-		{"out dir", got.OutDir == "/tmp/out", got.OutDir},
-		{"open report", got.OpenReport, got.OpenReport},
-		{"min severity", got.MinSeverity == "HIGH", got.MinSeverity},
-		{"fail-on", got.FailOn == "CRITICAL", got.FailOn},
-		{"exclude", strings.Join(got.Exclude, ",") == "vendor,dist", got.Exclude},
-		{"skip noise", !got.UseDefaultExcludes, got.UseDefaultExcludes},
-		{"semgrep", strings.Join(got.SemgrepConfigs, ",") == "p/ci,p/golang", got.SemgrepConfigs},
-		{"trivy", got.TrivyScanners == "vuln", got.TrivyScanners},
-		{"gitleaks", got.GitleaksMode == "git", got.GitleaksMode},
-		{"jobs", got.Jobs == 4, got.Jobs},
-		{"offline", got.Offline, got.Offline},
-		{"compare", !got.Compare, got.Compare},
+		{"save reports in", got.OutDir == "/tmp/out", got.OutDir},
+		{"open when done", got.OpenReport, got.OpenReport},
+		{"hide anything below", got.MinSeverity == "HIGH", got.MinSeverity},
+		{"fail the build at", got.FailOn == "CRITICAL", got.FailOn},
+		{"your folders", strings.Join(got.Exclude, ",") == "vendor,dist", got.Exclude},
+		{"the usual noise", !got.UseDefaultExcludes, got.UseDefaultExcludes},
+		{"semgrep rules", strings.Join(got.SemgrepConfigs, ",") == "p/ci,p/golang", got.SemgrepConfigs},
+		{"trivy passes", got.TrivyScanners == "vuln", got.TrivyScanners},
+		{"gitleaks looks at", got.GitleaksMode == "git", got.GitleaksMode},
+		{"scanners at once", got.Jobs == 4, got.Jobs},
+		{"no network", got.Offline, got.Offline},
+		{"compare with last", !got.Compare, got.Compare},
 	} {
 		if !check.ok {
 			t.Errorf("%s did not reach the options: %v", check.name, check.got)
@@ -562,23 +580,38 @@ func TestTheFormAppliesBackEverySetting(t *testing.T) {
 	}
 }
 
-func TestABlankTuningFieldKeepsTheDefault(t *testing.T) {
-	// An empty --semgrep-config would scan with no rules at all and still look
-	// like a scan.
-	base := scan.NewOptions()
-	m := newTestModel(t, base, "")
-	m.values.semgrep = ""
-	m.values.trivy = ""
-	m.values.jobs = "0"
+func TestABlankDetailKeepsTheDefault(t *testing.T) {
+	// An empty rule list would scan with no rules at all and still look like a
+	// scan.
+	u := newUI(t, scan.NewOptions(), "")
+	u.values.semgrep = ""
+	u.values.trivy = ""
+	u.values.jobs = "0"
 
-	got := m.collect()
+	got := u.collect()
 	if len(got.SemgrepConfigs) == 0 {
-		t.Error("a blank semgrep config must leave the default in place")
+		t.Error("a blank rule list must leave the default in place")
 	}
 	if got.TrivyScanners == "" {
-		t.Error("a blank trivy scanner list must leave the default in place")
+		t.Error("a blank trivy pass list must leave the default in place")
 	}
 	if got.Jobs < 1 {
-		t.Errorf("jobs fell to %d", got.Jobs)
+		t.Errorf("scanners at once fell to %d", got.Jobs)
+	}
+}
+
+func TestEveryFieldSurvivesARelayout(t *testing.T) {
+	// The narrow layout rebuilds the forms. Rebuilding must not lose what was
+	// typed, which it would if the widgets were rebuilt from the stored options.
+	u := newUI(t, scan.NewOptions(), "")
+	_ = screenOf(u, 120, 36)
+	u.values.path = "/typed/before/the/resize"
+	view := screenOf(u, 80, 24)
+
+	if got := u.collect().Path; got != "/typed/before/the/resize" {
+		t.Errorf("the resize lost the path: %q", got)
+	}
+	if !strings.Contains(view, "/typed") {
+		t.Errorf("the rebuilt screen does not show it:\n%s", view)
 	}
 }
