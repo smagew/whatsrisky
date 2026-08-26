@@ -8,7 +8,7 @@ import (
 
 // Version is the package version, and the one stamped into every report. It is
 // the only place it is written; -ldflags can override it for a build.
-var Version = "0.3.2"
+var Version = "0.4.0"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))

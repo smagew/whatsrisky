@@ -85,14 +85,22 @@ terminal UI, `v` opens it from the first second.
 **Equivalent command** panel — you always see the flags your choices produce, so
 the UI is a way to *learn* the CLI rather than an alternative to it. It also shows
 which scanners are actually installed, and warns before you run: a bad path, a
-missing API key, an AI backend asked to do something it cannot, how many patterns
-are being skipped.
+missing API key, an AI backend asked to do something it cannot, a scanner that is
+switched on but not installed — and what that one would have checked.
 
-`ctrl+r` runs the scan, `ctrl+s` saves the current form as a named **profile**.
-`tab` and the arrows move; the form prints the keys that apply to the field you
-are on.
+`ctrl+r` runs the scan, `ctrl+s` saves the current settings as a named
+**profile**, `ctrl+i` lists the 49 folders and files a scan always skips. Move
+with `tab` and the arrows, or click: a click ticks a scanner, opens a list, picks
+from it, or puts the cursor in a field. Only text is typed.
+
+Every setting is on one screen — no pages, no scrolling. Where the terminal is
+too short for one column the settings go into two, and where there is no room for
+the panel beside them, `ctrl+p` brings it up.
 
 ![settings UI](docs/tui-settings.png)
+
+<!-- This screenshot predates the tview rebuild in 0.4.0 and shows the old
+     interface. It needs retaking on a real terminal. -->
 
 Saving a profile is the last section, not the first: the first thing asked for
 should be what to scan, not what to call the settings you have not chosen yet. The
