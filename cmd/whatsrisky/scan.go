@@ -91,6 +91,21 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 		return 1
 	}
 
+	// The folder's own settings, unless a profile was named - a name is asked for
+	// explicitly and wins. Flags are applied after either, so a flag on the line
+	// always has the last word.
+	//
+	// Said out loud: settings coming from a file the caller did not mention on the
+	// line is exactly the kind of thing that has to be visible.
+	if *profileName == "" {
+		if stored, ok := config.LoadProject(options.Path); ok {
+			target := options.Path
+			options = stored
+			options.Path = target
+			fmt.Fprintf(stderr, "using %s from %s\n", config.ProjectFile, options.Path)
+		}
+	}
+
 	// Naming a Claude setting is an unambiguous request for the AI pass.
 	wantsAI := *useAI || *aiProvider != "" || *modelName != "" || *aiMode != ""
 	options.Tools = chooseTools(options.Tools, *tools, wantsAI, *noAI)

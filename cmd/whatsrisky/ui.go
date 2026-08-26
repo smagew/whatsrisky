@@ -22,8 +22,24 @@ func cmdUI(args []string, stdout, stderr *os.File) int {
 		return 1
 	}
 
-	// The active profile decides what the form starts from - a profile you saved is
-	// what you meant to come back to - with the last run as the fallback.
+	// Where we are is what we scan, unless a path was given. Everything else
+	// follows from that folder, not from whatever was scanned last.
+	target := ""
+	if len(positional) > 0 {
+		target = positional[0]
+	}
+	if target == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			target = cwd
+		}
+	}
+	if absolute, err := filepath.Abs(target); err == nil {
+		target = absolute
+	}
+
+	// A named profile is asked for explicitly, so it wins. Otherwise the folder's
+	// own settings, and otherwise the defaults - never the last run in some other
+	// project.
 	var options scan.Options
 	profile := *profileName
 	if profile != "" {
@@ -34,24 +50,10 @@ func cmdUI(args []string, stdout, stderr *os.File) int {
 			return 1
 		}
 		options = loaded
-		_ = config.SetActiveProfile(profile)
-		if last, hadLast := config.LoadLast(); hadLast {
-			options.Path = last.Path
-		}
 	} else {
-		options, profile = config.StartupOptions()
+		options, profile = config.StartupOptions(target)
 	}
-	if len(positional) > 0 {
-		options.Path = positional[0]
-	}
-	if options.Path == "" {
-		if cwd, err := os.Getwd(); err == nil {
-			options.Path = cwd
-		}
-	}
-	if absolute, err := filepath.Abs(options.Path); err == nil {
-		options.Path = absolute
-	}
+	options.Path = target
 
 	report.Version = Version
 	code, err := ui.Run(Version, options, profile)

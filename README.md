@@ -103,6 +103,12 @@ the panel beside them, `ctrl+p` brings it up.
 <!-- This screenshot predates the tview rebuild in 0.4.0 and shows the old
      interface. It needs retaking on a real terminal. -->
 
+Settings are saved into the project as `.whatsrisky.json`, so the next launch in
+that folder starts from them and a launch anywhere else does not. Commit it and the
+team scans the same way. It holds no path, no diff range and no baseline — those
+belong to one run. A named profile (`--profile ci-fast`) still overrides it, and a
+flag on the command line overrides both.
+
 Saving a profile is the last section, not the first: the first thing asked for
 should be what to scan, not what to call the settings you have not chosen yet. The
 one you saved is what the next launch starts from — the header says which. Profiles work from the CLI

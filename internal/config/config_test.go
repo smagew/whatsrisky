@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -31,26 +32,97 @@ func writeConfig(t *testing.T, home string, document any) {
 	}
 }
 
-func TestASavedProfileIsWhatTheNextLaunchStartsFrom(t *testing.T) {
+func TestAFolderWithNoSettingsOfItsOwnStartsFromTheDefaults(t *testing.T) {
+	// The defect: settings lived in one shared file, so running whatsrisky in a
+	// second project came up showing the first project's folder and profile.
 	configHome(t)
-	options := scan.NewOptions()
-	options.Path = "/some/project"
-	options.MinSeverity = "HIGH"
-	options.Tools = []string{"semgrep"}
-	if err := SaveProfile("nightly", options); err != nil {
+	first := t.TempDir()
+	settings := scan.NewOptions()
+	settings.MinSeverity = "HIGH"
+	settings.Tools = []string{"semgrep"}
+	if err := SaveProject(first, settings); err != nil {
+		t.Fatalf("saving the first project: %v", err)
+	}
+	if err := SaveProfile("nightly", settings); err != nil {
+		t.Fatalf("saving a named profile: %v", err)
+	}
+	if err := SetActiveProfile("nightly"); err != nil {
+		t.Fatalf("marking it active: %v", err)
+	}
+
+	second := t.TempDir()
+	restored, active := StartupOptions(second)
+	if active != "" {
+		t.Errorf("a folder with no settings reports %q", active)
+	}
+	if restored.Path != second {
+		t.Errorf("path %q, want the folder we are in", restored.Path)
+	}
+	if restored.MinSeverity != scan.NewOptions().MinSeverity {
+		t.Errorf("the other project's severity floor came along: %q", restored.MinSeverity)
+	}
+	if len(restored.Tools) != len(scan.NewOptions().Tools) {
+		t.Errorf("the other project's scanners came along: %v", restored.Tools)
+	}
+}
+
+func TestAFolderWithItsOwnSettingsUsesThem(t *testing.T) {
+	configHome(t)
+	project := t.TempDir()
+	settings := scan.NewOptions()
+	settings.MinSeverity = "HIGH"
+	settings.Tools = []string{"semgrep"}
+	settings.Offline = true
+	if err := SaveProject(project, settings); err != nil {
 		t.Fatalf("saving: %v", err)
 	}
 
-	restored, active := StartupOptions()
-	if active != "nightly" {
-		t.Errorf("active profile %q", active)
+	restored, active := StartupOptions(project)
+	if active != ProjectFile {
+		t.Errorf("the launch reports %q, want %q", active, ProjectFile)
 	}
-	if restored.MinSeverity != "HIGH" || len(restored.Tools) != 1 {
-		t.Errorf("the profile was not restored: %+v", restored)
+	if restored.MinSeverity != "HIGH" || len(restored.Tools) != 1 || !restored.Offline {
+		t.Errorf("the folder's own settings were not used: %+v", restored)
 	}
-	// The target stays where you were pointing, taken from the last run.
-	if restored.Path != "/some/project" {
-		t.Errorf("path %q", restored.Path)
+	if restored.Path != project {
+		t.Errorf("path %q, want %q", restored.Path, project)
+	}
+}
+
+func TestAProjectFileNeverCarriesAPathOrARange(t *testing.T) {
+	// A file that stored a path would hand the next reader someone else's folder,
+	// which is the whole defect in miniature. The settings are for the folder they
+	// were found in.
+	configHome(t)
+	project := t.TempDir()
+	settings := scan.NewOptions()
+	settings.Path = "/somewhere/else"
+	settings.Diff = "main..HEAD"
+	settings.Baseline = "/old/report.json"
+	settings.Out = "/tmp/out.json"
+	settings.FailOn = "high"
+	if err := SaveProject(project, settings); err != nil {
+		t.Fatalf("saving: %v", err)
+	}
+
+	raw, err := os.ReadFile(ProjectPath(project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range perRunFields {
+		if bytes.Contains(raw, []byte(`"`+field+`"`)) {
+			t.Errorf("the file stores %q, which belongs to one run", field)
+		}
+	}
+	restored, _ := StartupOptions(project)
+	if restored.Path != project {
+		t.Errorf("path %q, want the folder the file was found in", restored.Path)
+	}
+	if restored.Diff != "" || restored.Baseline != "" || restored.Out != "" {
+		t.Errorf("a per-run field survived: %+v", restored)
+	}
+	if restored.FailOn != "high" {
+		t.Errorf("a real setting was lost: %q", restored.FailOn)
 	}
 }
 
@@ -127,7 +199,9 @@ func TestAPythonWrittenConfigKeepsWorking(t *testing.T) {
 	if options.Timeout != scan.NewOptions().Timeout || options.Jobs != scan.NewOptions().Jobs {
 		t.Errorf("defaults were not applied: timeout=%d jobs=%d", options.Timeout, options.Jobs)
 	}
-	if _, active := StartupOptions(); active != "os" {
+	// The migration still marks it active for `profiles` to report; a launch no
+	// longer starts from it, which is what the per-project file is for.
+	if active := ActiveProfile(); active != "os" {
 		t.Errorf("active profile %q", active)
 	}
 }
@@ -178,7 +252,10 @@ func TestAnOldConfigIsMigratedInSteps(t *testing.T) {
 	}
 }
 
-func TestTheLastRunIsUsedWhenNoProfileIsActive(t *testing.T) {
+func TestTheLastRunIsNotCarriedIntoAnotherFolder(t *testing.T) {
+	// Deliberately the opposite of what this used to assert. A remembered run is
+	// how one project's folder and settings turned up in another, so a launch now
+	// reads the folder it is in and nothing else.
 	configHome(t)
 	options := scan.NewOptions()
 	options.Jobs = 2
@@ -186,12 +263,16 @@ func TestTheLastRunIsUsedWhenNoProfileIsActive(t *testing.T) {
 	if err := SaveLast(options); err != nil {
 		t.Fatalf("saving: %v", err)
 	}
-	restored, active := StartupOptions()
+	elsewhere := t.TempDir()
+	restored, active := StartupOptions(elsewhere)
 	if active != "" {
-		t.Errorf("no profile should be active, got %q", active)
+		t.Errorf("no settings should be reported, got %q", active)
 	}
-	if restored.Jobs != 2 {
-		t.Errorf("jobs %d", restored.Jobs)
+	if restored.Jobs != scan.NewOptions().Jobs {
+		t.Errorf("the last run's jobs came along: %d", restored.Jobs)
+	}
+	if restored.Path != elsewhere {
+		t.Errorf("path %q, want the folder we are in", restored.Path)
 	}
 }
 
@@ -226,7 +307,7 @@ func TestACorruptConfigFallsBackToTheDefaults(t *testing.T) {
 	if names := ProfileNames(); len(names) != 0 {
 		t.Errorf("profiles from a corrupt file: %v", names)
 	}
-	options, active := StartupOptions()
+	options, active := StartupOptions(t.TempDir())
 	if active != "" || options.Timeout != scan.NewOptions().Timeout {
 		t.Errorf("a corrupt file must not break a launch: %+v", options)
 	}

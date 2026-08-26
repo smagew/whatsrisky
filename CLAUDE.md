@@ -168,6 +168,12 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   directly - `root.SetRect(...)` then `root.Draw(screen)`. Going through
   `Application` races its own first frame, which produced an 80-column preview of
   a 120-column layout and made the layout look broken.
+- **Settings are per-project, and a launch reads nothing else.**
+  `.whatsrisky.json` in the scanned folder, or the defaults. A remembered last run
+  is what made whatsrisky open in one project showing another's folder and profile;
+  restoring anything global on launch brings that back. Named profiles stay global
+  because they are asked for by name. A per-run field - path, out, diff, baseline -
+  must never be written into the file.
 - **An overlay must swallow what it does not use.** `Pages` keeps the page
   underneath live, so a click the overlay ignores reaches the screen behind it -
   and if it lands on a drop-down, that drop-down opens *behind* the overlay and

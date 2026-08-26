@@ -103,17 +103,29 @@ func whatItCovers(tool string) string {
 	return tool
 }
 
-// saveProfile stores the settings under the name in the last field.
+// saveProfile writes the settings where the next launch will look for them: in
+// the project itself. A name, if one was typed, also stores them under that name
+// for --profile, which is asked for explicitly and is not per-project.
 func (u *UI) saveProfile() string {
+	options := u.collect()
+	target := strings.TrimSpace(options.Path)
+	if target == "" {
+		return "there is no project folder to save into"
+	}
+	if err := config.SaveProject(target, options); err != nil {
+		return "saving " + config.ProjectFile + ": " + err.Error()
+	}
+	saved := "saved to " + config.ProjectFile + " — this folder starts from it"
+
 	name := strings.TrimSpace(u.values.profileName)
 	if name == "" {
-		return "type a name in 'save these settings as' first"
+		return saved
 	}
-	if err := config.SaveProfile(name, u.collect()); err != nil {
-		return "saving the settings: " + err.Error()
+	if err := config.SaveProfile(name, options); err != nil {
+		return saved + ", but the named copy failed: " + err.Error()
 	}
 	u.profile = name
-	return "saved '" + name + "' — the next launch starts from it"
+	return saved + ", and as '" + name + "' for --profile"
 }
 
 // profileNames is the saved list, for the panel.

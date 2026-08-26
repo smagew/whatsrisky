@@ -246,7 +246,7 @@ func TestEverySettingIsOnTheScreenAtOnce(t *testing.T) {
 		"anything else", "the usual noise",
 		"hide anything below", "fail the build at",
 		"semgrep rules", "trivy passes", "gitleaks looks at", "scanners at once",
-		"no network", "compare with last", "save these settings as",
+		"no network", "compare with last", "also save as",
 	} {
 		if !strings.Contains(view, label) {
 			t.Errorf("%q is not on the screen:\n%s", label, view)
@@ -261,7 +261,7 @@ func TestTheNarrowScreenKeepsEverySettingAndTheAction(t *testing.T) {
 	u := newUI(t, options, "")
 	view := screenOf(u, 80, 24)
 
-	for _, label := range []string{"project folder", "scanners at once", "save these settings as"} {
+	for _, label := range []string{"project folder", "scanners at once", "also save as"} {
 		if !strings.Contains(view, label) {
 			t.Errorf("%q dropped below the fold at 80x24:\n%s", label, view)
 		}
@@ -675,24 +675,41 @@ func TestTheChordsRunAndSave(t *testing.T) {
 
 	u.values.profileName = "nightly"
 	u.key(tcell.KeyCtrlS)
-	if !strings.Contains(frame(u, 120, 36), "saved 'nightly'") {
-		t.Error("ctrl+s did not save the settings")
+	if view := frame(u, 120, 36); !strings.Contains(view, config.ProjectFile) {
+		t.Errorf("ctrl+s did not say where it saved:\n%s", lineWith(view, "saved"))
+	}
+	// Into the project, so the next launch in this folder starts from it.
+	if _, ok := config.LoadProject(options.Path); !ok {
+		t.Errorf("no %s was written into the project", config.ProjectFile)
 	}
 	if u.profile != "nightly" {
 		t.Errorf("active profile %q", u.profile)
 	}
-	restored, active := config.StartupOptions()
-	if active != "nightly" || restored.MinSeverity != "HIGH" {
-		t.Errorf("the next launch would start from %+v (active %q)", restored, active)
+	// A launch in this folder starts from what was saved; a launch anywhere else
+	// does not, which is the whole point of the file living here.
+	restored, active := config.StartupOptions(options.Path)
+	if active != config.ProjectFile || restored.MinSeverity != "HIGH" {
+		t.Errorf("a launch here would start from %+v (%q)", restored, active)
+	}
+	if elsewhere, active := config.StartupOptions(t.TempDir()); active != "" ||
+		elsewhere.MinSeverity == "HIGH" {
+		t.Errorf("the settings followed us to another folder: %+v (%q)", elsewhere, active)
 	}
 }
 
-func TestSavingWithoutANameSaysWhere(t *testing.T) {
+func TestSavingWithNoFolderWritesNothingAndSaysWhy(t *testing.T) {
+	// With no folder there is nowhere to save. What the screen shows is the reason
+	// the folder is wrong, which is the actionable half - a blocking problem holds
+	// the always-visible line ahead of any other notice.
 	u := newUI(t, scan.NewOptions(), "")
 	_ = screenOf(u, 120, 36)
 	u.key(tcell.KeyCtrlS)
-	if view := frame(u, 120, 36); !strings.Contains(view, "save these settings as") {
-		t.Errorf("the notice should name the field to type in:\n%s", view)
+
+	if got := u.saveProfile(); !strings.Contains(got, "no project folder") {
+		t.Errorf("saving with no folder returned %q", got)
+	}
+	if view := frame(u, 120, 36); !strings.Contains(view, "path is empty") {
+		t.Errorf("the screen says nothing about the folder:\n%s", view)
 	}
 }
 

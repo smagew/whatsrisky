@@ -31,7 +31,7 @@ var about = map[string]string{
 	"What we do not look at": "ctrl+i lists the 49 we always skip",
 	"Filtering":              "what to hide, and what should fail a build",
 	"Details":                "leave these alone unless you have a reason",
-	"Profile":                "ctrl+s stores everything above under this name",
+	"Profile":                "ctrl+s saves into this folder; a name also stores a copy for --profile",
 }
 
 // field is one row of the form, described rather than built, so the same list can
@@ -149,7 +149,7 @@ func (u *UI) fields() []field {
 		}},
 
 		{"Profile", func(f *tview.Form, w int) {
-			input(f, 20, "save these settings as", v.profileName, "a name", w, func(text string) { v.profileName = text })
+			input(f, 20, "also save as", v.profileName, "optional name", w, func(text string) { v.profileName = text })
 		}},
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 
 	"github.com/smagew/whatsrisky/internal/scan"
 )
@@ -32,7 +33,56 @@ type file struct {
 	Profiles      map[string]map[string]json.RawMessage `json:"profiles,omitempty"`
 }
 
-// Path is where the settings live.
+// ProjectFile is what a project's own settings are called. It sits in the folder
+// being scanned, so the settings belong to the project rather than to whoever ran
+// the tool last - and it can be committed, which is how a team shares one way of
+// scanning.
+const ProjectFile = ".whatsrisky.json"
+
+// ProjectPath is where a given project keeps its settings.
+func ProjectPath(dir string) string { return filepath.Join(dir, ProjectFile) }
+
+// LoadProject reads a project's own settings. The stored path is ignored: the
+// settings are for the folder they were found in, and honouring a path written
+// somewhere else is exactly how one project came up showing another's.
+func LoadProject(dir string) (scan.Options, bool) {
+	raw, err := os.ReadFile(ProjectPath(dir))
+	if err != nil {
+		return scan.NewOptions(), false
+	}
+	var stored map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return scan.NewOptions(), false
+	}
+	for _, field := range perRunFields {
+		delete(stored, field)
+	}
+	options, ok := decode(stored)
+	if !ok {
+		return scan.NewOptions(), false
+	}
+	options.Path = dir
+	return options, true
+}
+
+// SaveProject writes a project's own settings beside the project. Per-run fields
+// are left out: a path, a diff range and a baseline belong to one invocation, and
+// a file that carried them would hand the next reader someone else's run.
+func SaveProject(dir string, options scan.Options) error {
+	stored := encode(options)
+	for _, field := range perRunFields {
+		delete(stored, field)
+	}
+	stored["version"] = json.RawMessage(strconv.Itoa(Version))
+	raw, err := json.MarshalIndent(stored, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(ProjectPath(dir), append(raw, '\n'), 0o600)
+}
+
+// Path is where the shared settings live: the named profiles, which are asked for
+// by name and are deliberately not per-project.
 func Path() string {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
@@ -248,24 +298,15 @@ func SetActiveProfile(name string) error {
 
 // StartupOptions is what a fresh launch starts from.
 //
-// The active profile wins: a profile you saved is what you meant to come back to.
-// Without one, the last run. Without that, the defaults. The target stays where
-// you were pointing either way.
-func StartupOptions() (scan.Options, string) {
-	name := ActiveProfile()
-	if name != "" {
-		if profile, ok := LoadProfile(name); ok {
-			if last, hadLast := LoadLast(); hadLast {
-				profile.Path = last.Path
-				profile.Out = last.Out
-				profile.Diff = last.Diff
-				profile.Baseline = last.Baseline
-			}
-			return profile, name
-		}
+// The project's own file wins, and nothing else is consulted: launched in a folder
+// with no settings of its own, the answer is the defaults. Carrying the last run
+// forward is what made whatsrisky come up in one project showing another project's
+// folder and another project's profile.
+func StartupOptions(dir string) (scan.Options, string) {
+	if options, ok := LoadProject(dir); ok {
+		return options, ProjectFile
 	}
-	if last, ok := LoadLast(); ok {
-		return last, ""
-	}
-	return scan.NewOptions(), ""
+	options := scan.NewOptions()
+	options.Path = dir
+	return options, ""
 }

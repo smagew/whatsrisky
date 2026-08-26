@@ -254,9 +254,14 @@ func (u *UI) refresh() {
 	} else if u.held == "" {
 		u.notice.SetText("")
 	}
+	// The header names where the settings came from. A file name would read as a
+	// profile name, and they are not the same thing.
 	name := u.profile
-	if name == "" {
-		name = "unsaved"
+	switch name {
+	case config.ProjectFile:
+		name = "this folder's settings"
+	case "":
+		name = "defaults"
 	}
 	u.header.SetText(titleTag + "whatsrisky" + resetTag + dimTag +
 		"  " + name + " · " + u.version + " · report schema " +

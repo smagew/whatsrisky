@@ -9,6 +9,18 @@ All notable changes to this project are documented here. This project follows
 
 ### Changed
 
+- **Settings belong to the project, not to whoever ran the tool last.** A launch
+  reads `.whatsrisky.json` from the folder being scanned; without one, the
+  defaults. Nothing else is consulted. Previously the settings lived in one shared
+  file, so running whatsrisky in a second project came up showing the first
+  project's folder and the first project's profile.
+  The file can be committed, which is how a team shares one way of scanning. It
+  never stores a path, a diff range or a baseline — those belong to one invocation,
+  and a file that carried them would hand the next reader someone else's run.
+  `ctrl+s` writes it. `--profile NAME` still wins, because a name is asked for
+  explicitly, and a flag on the line wins over both. The CLI says
+  `using .whatsrisky.json from …` when it reads one: settings that did not come
+  from the command line have to be visible.
 - **The AI review pass now runs by default.** A deliberate decision by the project
   owner, taken after the case against it was put: it spends the caller's money and
   sends code to a third party. What the decision obliges is in place — `--no-ai`
