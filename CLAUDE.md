@@ -1,7 +1,7 @@
 # CLAUDE.md — working on whatsrisky
 
 whatsrisky answers one question about a codebase: **what's risky here?** It runs
-Semgrep, Trivy and gitleaks (and, opt-in, an LLM reviewer), normalizes every
+Semgrep, Trivy, gitleaks and an LLM reviewer (`--no-ai` drops it), normalizes every
 finding onto one severity scale, and produces a report a person can act on —
 prioritized, with evidence, remediation, and an explicit statement of what was
 *not* scanned. See `README.md` for the product surface and `CHANGELOG.md` for the
@@ -76,9 +76,15 @@ For any non-trivial change, in order:
 - **Honest scoping.** If a scanner cannot honour an option, it says so in the
   report (see Trivy and `--diff`) instead of pretending. Fake precision is worse
   than a stated limitation.
-- **The AI pass is opt-in, always.** It spends the caller's money and sends code
-  to a third party. It is never in a default set, and the report records which
-  model produced which finding.
+- **The AI pass runs by default, and everything around it has to earn that.**
+  Changed deliberately in 0.4.0, by the project owner, after the case against was
+  put: it spends the caller's money and sends code to a third party. What the
+  decision therefore obliges:
+  `--no-ai` exists, has the last word over every way of asking for the pass
+  (including naming a model), and is what the equivalent command prints; the
+  screen warns about the cost before a run, not after; and the report still
+  records which model produced which finding. A default that spends money is only
+  acceptable while it is this easy to see and to refuse.
 - **An agentic backend and an API backend are not the same analysis.** One reads
   the repository, the other sees the slice we chose. The report says which ran and
   how much it was shown; a backend that cannot do something refuses with the reason

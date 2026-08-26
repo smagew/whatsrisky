@@ -146,7 +146,8 @@ func firstNonEmptyString(values ...string) string {
 //
 // Hidden folders are included - .github and .claude are exactly the kind of thing
 // someone wants out of a scan - but the ones we always skip are not, because they
-// are already covered by the switch beside this.
+// are already covered by the switch beside this. Every folder is returned: the row
+// wraps, and whatever still does not fit is counted on screen rather than dropped.
 func (u *UI) projectDirs() []string {
 	path := strings.TrimSpace(u.values.path)
 	if path == "" {
@@ -166,15 +167,8 @@ func (u *UI) projectDirs() []string {
 			continue
 		}
 		out = append(out, entry.Name())
-		if len(out) == maxDirChips {
-			break
-		}
 	}
 	sort.Strings(out)
 	u.dirsFor, u.dirs = path, out
 	return out
 }
-
-// maxDirChips is where the row stops. A project with sixty top-level folders is
-// not helped by sixty chips, and the field beside them takes a name directly.
-const maxDirChips = 10

@@ -9,6 +9,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Changed
 
+- **The AI review pass now runs by default.** A deliberate decision by the project
+  owner, taken after the case against it was put: it spends the caller's money and
+  sends code to a third party. What the decision obliges is in place — `--no-ai`
+  drops it and has the last word over every other way of asking for the pass,
+  including naming a model; the equivalent command prints `--no-ai` rather than a
+  list of the other three; the screen warns about the cost before the run; and the
+  report still records which model produced which finding.
+
 - **The interface is rebuilt on [tview](https://github.com/rivo/tview).** tview is a
   widget toolkit, so the checkboxes, lists, fields, focus handling and mouse are
   the library's rather than ours. Bubble Tea, which the last two versions used, is
@@ -27,6 +35,8 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **`--no-ai`**, because a default that spends money has to be one flag to refuse,
+  not a list of the three scanners you do want.
 - **The folders of the project are ticked, not typed.** The section lists what is
   actually in the project folder — `.github`, `cmd`, `docs`, `internal` — and
   ticking one skips it. Typing the name of a folder you are looking at is
@@ -75,6 +85,12 @@ All notable changes to this project are documented here. This project follows
   after it.
 - A ticked chip keeps its tick: tview reads square brackets as colour markup, so
   an unescaped `[x]` was swallowed.
+- **No folder is dropped from the row in silence.** The list stopped at ten and
+  said nothing, which is the one thing this project does not allow anywhere else.
+  It now shows what fits and counts the rest — `+6 more` — and the field beside it
+  takes those by name. The row also follows the cursor, so stepping onto a folder
+  that is off the end scrolls to it instead of leaving the cursor somewhere
+  invisible.
 - A problem that blocks a scan — a path that is not a directory — is on the
   always-visible line, not only in a panel a small terminal hides.
 - A scanner that did not run no longer has "0 findings" written next to it in the

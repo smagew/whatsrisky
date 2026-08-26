@@ -26,7 +26,9 @@
       "ai_provider": "openai",
       "model": "gpt-5"
     },
-    "expect": "whatsrisky /p --ai --ai-provider openai --model gpt-5"
+    "expect": "whatsrisky /p --ai-provider openai --model gpt-5",
+    "was": "whatsrisky /p --ai --ai-provider openai --model gpt-5",
+    "diverges": "Diverges from the Python reference on purpose: the review pass is in the default set since 0.4.0, so --ai is what you would write to say nothing."
   },
   {
     "options": {
@@ -83,7 +85,9 @@
       "ai_context_bytes": 1000,
       "model": "sonnet"
     },
-    "expect": "whatsrisky /p --ai --tools none --model sonnet --ai-mode review --ai-timeout 600 --ai-max-findings 10 --ai-context-bytes 1000"
+    "expect": "whatsrisky /p --tools ai --model sonnet --ai-mode review --ai-timeout 600 --ai-max-findings 10 --ai-context-bytes 1000",
+    "was": "whatsrisky /p --ai --tools none --model sonnet --ai-mode review --ai-timeout 600 --ai-max-findings 10 --ai-context-bytes 1000",
+    "diverges": "Diverges from the Python reference on purpose, and reads better for it: '--ai --tools none' said no scanners and then added one. '--tools ai' says the same thing once."
   },
   {
     "options": {

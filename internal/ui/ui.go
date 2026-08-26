@@ -143,14 +143,10 @@ func (u *UI) build() {
 // so nothing sits below the fold.
 func (u *UI) layout() {
 	fields := u.fields()
-	// One row per field and per heading. The arrangement is chosen by whether
-	// that actually fits, not by width alone: at 120x36 one column is three rows
-	// too tall, and the settings that fall off the bottom are invisible whether
-	// the terminal is narrow or not.
-	rows := len(fields) + sectionCount(fields)
-	// Five, measured rather than guessed: the header, the notice, the key line,
-	// and a row of the form's own padding at each end.
-	oneColumn := rows+5 <= u.height && u.width >= 100
+	// The arrangement is chosen by whether the settings actually fit, and the
+	// answer is measured rather than counted: a chip row is one field but may be
+	// three lines, so counting fields would claim room that is not there.
+	oneColumn := u.fitsOneColumn(fields)
 	u.forms = nil
 
 	var content tview.Primitive
@@ -204,33 +200,42 @@ func (u *UI) layout() {
 // warnings, and starving it is what made both wrap mid-word. Beside two columns
 // of settings it takes the minimum that still fits a path, because there the
 // fields are the scarce thing.
+//
+// It cannot ask fitsOneColumn, which asks it back, so it goes on height alone -
+// the wide panel is only ever wanted when there is room to spare.
 func (u *UI) panelWidth() int {
-	fields := u.fields()
-	if len(fields)+sectionCount(fields)+5 <= u.height && u.width >= 100 {
+	if u.width >= 100 && u.height >= 40 {
 		return minInt(52, maxInt(34, u.width*38/100))
 	}
 	return 34
 }
 
-// sectionCount is how many headings the fields need, which is one per change of
-// section in reading order.
-func sectionCount(fields []field) int {
-	count, section := 0, ""
-	for _, entry := range fields {
-		if entry.section != section {
-			section = entry.section
-			count++
-		}
+// fitsOneColumn asks the form itself how tall it would be. Five rows go to the
+// header, the notice, the key line and the form's own padding at each end - a
+// number measured once and then relied on.
+func (u *UI) fitsOneColumn(fields []field) bool {
+	if u.width < 100 {
+		return false
 	}
-	return count
+	return u.formRows(fields, u.width-u.panelWidth()-30)+5 <= u.height
+}
+
+// formRows builds the column and adds up what its items ask for. Throwaway work,
+// once per resize, in exchange for not guessing.
+func (u *UI) formRows(fields []field, width int) int {
+	form := u.newForm(fields, width, false)
+	rows := 0
+	for index := 0; index < form.GetFormItemCount(); index++ {
+		rows += form.GetFormItem(index).GetFieldHeight()
+	}
+	return rows
 }
 
 // hasPanel says whether the panel fits beside the form. Two columns of settings
 // need about eighty columns, so the panel survives from about a hundred and
 // twenty. Where it does not fit, ctrl+p brings it up: hidden is not gone.
 func (u *UI) hasPanel() bool {
-	fields := u.fields()
-	if len(fields)+sectionCount(fields)+5 <= u.height && u.width >= 100 {
+	if u.fitsOneColumn(u.fields()) {
 		return true
 	}
 	return u.width >= 118

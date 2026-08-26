@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/smagew/whatsrisky/internal/scan"
 )
 
 func TestFlagsMayFollowThePath(t *testing.T) {
@@ -109,5 +111,57 @@ func capture(t *testing.T) (*os.File, func() string) {
 			t.Fatalf("reading the capture: %v", err)
 		}
 		return string(body)
+	}
+}
+
+func TestTheAIPassRunsUnlessRefused(t *testing.T) {
+	// It is in the default set, so the question that matters is whether it can be
+	// turned off - and whether the off switch wins.
+	if !contains(scan.DefaultTools, "ai") {
+		t.Fatal("the ai pass is meant to be in the default set")
+	}
+
+	for _, want := range []struct {
+		name   string
+		tools  string
+		ai     bool
+		noAI   bool
+		expect string
+	}{
+		{"defaults", "", false, false, "semgrep,trivy,gitleaks,ai"},
+		{"--no-ai", "", false, true, "semgrep,trivy,gitleaks"},
+		{"--no-ai beats --ai", "", true, true, "semgrep,trivy,gitleaks"},
+		{"--no-ai beats a named tool set", "semgrep,ai", false, true, "semgrep"},
+		{"a named set is taken as given", "semgrep,trivy", false, false, "semgrep,trivy"},
+		{"asking for it when it is already there adds nothing", "", true, false,
+			"semgrep,trivy,gitleaks,ai"},
+	} {
+		got := chooseTools(append([]string(nil), scan.DefaultTools...),
+			want.tools, want.ai, want.noAI)
+		if strings.Join(got, ",") != want.expect {
+			t.Errorf("%s: got %v, want %s", want.name, got, want.expect)
+		}
+	}
+}
+
+func TestTurningTheAIPassOffReadsAsSuchInTheCommand(t *testing.T) {
+	// The equivalent command is what keeps the interface and the CLI honest, and
+	// "--tools semgrep,trivy,gitleaks" leaves the reader to work out what changed.
+	options := scan.NewOptions()
+	options.Path = "/p"
+	options.Tools = append([]string(nil), scan.ToolsWithoutAI...)
+
+	got := options.Normalized().CommandLine()
+	if !strings.Contains(got, "--no-ai") {
+		t.Errorf("dropping the pass should read as --no-ai: %s", got)
+	}
+	if strings.Contains(got, "--tools") {
+		t.Errorf("and not as a list of the others: %s", got)
+	}
+
+	// And the default set says nothing at all.
+	options.Tools = append([]string(nil), scan.DefaultTools...)
+	if got := options.Normalized().CommandLine(); strings.Contains(got, "ai") {
+		t.Errorf("the default set needs no flag: %s", got)
 	}
 }

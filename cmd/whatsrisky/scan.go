@@ -34,7 +34,8 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 		format       = flags.String("format", "", "comma list: html,md,json (default all)")
 		tools        = flags.String("tools", "", "comma list of scanners (default semgrep,trivy,gitleaks)")
 		skip         = flags.String("skip", "", "comma list of scanners to skip")
-		useAI        = flags.Bool("ai", false, "add the AI review pass (off by default: it spends tokens)")
+		useAI        = flags.Bool("ai", false, "keep the AI review pass (on by default)")
+		noAI         = flags.Bool("no-ai", false, "drop the AI review pass: it spends money and sends code to a third party")
 		aiProvider   = flags.String("ai-provider", "", "who runs the model: claude-cli|openai (implies --ai)")
 		modelName    = flags.String("model", "", "model for the AI review (implies --ai; default: the backend's own)")
 		aiMode       = flags.String("ai-mode", "", "full|review|both (implies --ai)")
@@ -92,12 +93,7 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 
 	// Naming a Claude setting is an unambiguous request for the AI pass.
 	wantsAI := *useAI || *aiProvider != "" || *modelName != "" || *aiMode != ""
-	if *tools != "" {
-		options.Tools = splitList(*tools)
-	}
-	if wantsAI && !options.HasTool("ai") {
-		options.Tools = append(options.Tools, "ai")
-	}
+	options.Tools = chooseTools(options.Tools, *tools, wantsAI, *noAI)
 	if *skip != "" {
 		skipped := map[string]bool{}
 		for _, name := range splitList(*skip) {
@@ -320,6 +316,36 @@ func (c *console) finish(outcome scan.Outcome, options scan.Options, jsonStdout,
 // `whatsrisky <path> --ai`. The standard flag package stops at the first
 // non-flag argument, so a flag written after the path was silently ignored -
 // including --out-dir and --no-compare, which is how this was found.
+// chooseTools settles which scanners run. Separate from the command so it can be
+// tested: the AI pass costs money, so which flag wins is not a detail.
+//
+// --no-ai has the last word, deliberately, and beats every way of asking for the
+// pass including naming a model. Someone who spelled out "do not spend my money"
+// must not be overruled by a flag they left on the line.
+func chooseTools(current []string, named string, wantsAI, noAI bool) []string {
+	tools := current
+	if named != "" {
+		tools = splitList(named)
+	}
+	if wantsAI && !contains(tools, "ai") {
+		tools = append(tools, "ai")
+	}
+	if noAI {
+		tools = withoutTool(tools, "ai")
+	}
+	return tools
+}
+
+func withoutTool(tools []string, drop string) []string {
+	out := make([]string, 0, len(tools))
+	for _, name := range tools {
+		if name != drop {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 func parseInterleaved(flags *flag.FlagSet, args []string) ([]string, error) {
 	var positional []string
 	rest := args

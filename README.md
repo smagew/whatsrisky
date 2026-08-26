@@ -41,8 +41,9 @@ editable Python install did.
 
 The three scanners are separate binaries (`semgrep`, `trivy`, `gitleaks`) —
 `doctor` tells you what is missing and how to get it on your platform. The AI pass
-is **off by default**: it spends tokens on your account and sends code to a third
-party.
+runs **by default**, and `--no-ai` drops it: it spends money on your account and
+sends your code to a third party, so the flag that refuses it is short and has the
+last word.
 
 ## Use
 
@@ -145,9 +146,10 @@ whatsrisky ~/www/app --no-compare             # don't
 
 ## The AI pass, and who runs the model
 
-`--ai` adds an LLM reviewer that reads logic the pattern scanners cannot:
-authorization holes, data flow across files, business rules. It is off by default
-and never implicit.
+An LLM reviewer reads the logic the rule-based scanners cannot: authorization
+holes, data flow across files, business rules. It runs by default; `--no-ai`
+drops it, and does so whatever else is on the line — naming a model does not
+quietly turn it back on.
 
 | `--ai-provider` | Sees | Can review a diff |
 | --- | --- | --- |

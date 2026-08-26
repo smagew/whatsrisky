@@ -16,7 +16,11 @@ import (
 // code to a third party.
 var (
 	AllTools     = []string{"semgrep", "trivy", "gitleaks", "ai"}
-	DefaultTools = []string{"semgrep", "trivy", "gitleaks"}
+	DefaultTools = []string{"semgrep", "trivy", "gitleaks", "ai"}
+
+	// ToolsWithoutAI is the default set with the review pass taken out. It exists
+	// so turning the pass off is one flag rather than a list of the other three.
+	ToolsWithoutAI = []string{"semgrep", "trivy", "gitleaks"}
 
 	// ToolAliases keeps configs written before the pass became provider-neutral.
 	ToolAliases = map[string]string{"claude": "ai"}
@@ -177,21 +181,17 @@ func (o Options) CommandLine() string {
 	if o.Diff != "" {
 		add("--diff", o.Diff)
 	}
-	if o.HasTool("ai") {
-		add("--ai")
-	}
-	var toolSet []string
-	for _, tool := range o.Tools {
-		if tool != "ai" {
-			toolSet = append(toolSet, tool)
-		}
-	}
-	if !sameSet(toolSet, DefaultTools) {
-		if len(toolSet) > 0 {
-			add("--tools", strings.Join(toolSet, ","))
-		} else {
-			add("--tools", "none")
-		}
+	// The review pass is in the default set, so the flag worth printing is the one
+	// that drops it. "--ai" would be noise, and a list of the other three would
+	// leave the reader to work out what changed.
+	switch {
+	case sameSet(o.Tools, DefaultTools):
+	case sameSet(o.Tools, ToolsWithoutAI):
+		add("--no-ai")
+	case len(o.Tools) > 0:
+		add("--tools", strings.Join(o.Tools, ","))
+	default:
+		add("--tools", "none")
 	}
 	if !sameSet(o.Formats, FormatChoices) {
 		add("--format", strings.Join(o.Formats, ","))

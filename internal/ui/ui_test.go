@@ -303,6 +303,80 @@ func TestTheProjectsOwnFoldersAreTickedNotTyped(t *testing.T) {
 	}
 }
 
+func TestNoFolderIsDroppedFromTheRowInSilence(t *testing.T) {
+	// The row used to stop at ten folders and say nothing, which is the one thing
+	// this project does not allow: a list that shows fewer than there are, without
+	// saying so, is a list that lies.
+	root := t.TempDir()
+	var made []string
+	for _, name := range []string{
+		"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
+		"india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa",
+	} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		made = append(made, name)
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+
+	// Narrow on purpose, so they cannot all fit.
+	view := screenOf(u, 100, 30)
+	row := u.mustItem(t, "folders here").(*chips)
+
+	if len(row.names) != len(made) {
+		t.Errorf("the row was given %d folders of %d", len(row.names), len(made))
+	}
+	if row.shown() == len(made) {
+		t.Skip("they all fit at this size; nothing to report")
+	}
+	hidden := len(made) - row.shown()
+	if !strings.Contains(view, "+"+itoa(hidden)+" more") {
+		t.Errorf("%d folders are not shown and the screen does not say so:\n%s",
+			hidden, lineWith(view, "folders here"))
+	}
+}
+
+func TestTheRowFollowsTheCursorPastWhatFits(t *testing.T) {
+	// Stepping onto a chip that is off the end has to scroll the row. Otherwise the
+	// cursor is somewhere the user cannot see, and space toggles a folder they were
+	// not looking at.
+	root := t.TempDir()
+	for _, name := range []string{"alpha", "bravo", "charlie", "delta", "echo",
+		"foxtrot", "golf", "hotel"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+	_ = screenOf(u, 100, 30)
+
+	row := u.mustItem(t, "folders here").(*chips)
+	shown := row.shown()
+	if shown >= len(row.names) {
+		t.Skip("they all fit at this size; nothing to scroll")
+	}
+	// The last chip is off the end to begin with.
+	if row.window(shown) != 0 {
+		t.Errorf("the row starts scrolled, at %d", row.window(shown))
+	}
+	row.cursor = len(row.names) - 1
+	if first := row.window(shown); first+shown != len(row.names) {
+		t.Errorf("the last chip is not in view: window starts at %d, showing %d of %d",
+			first, shown, len(row.names))
+	}
+	// And a click still lands on what is drawn, not on the chip that used to be
+	// in that column.
+	if got := row.chipAt(0); got != row.window(shown) {
+		t.Errorf("a click on the first drawn chip resolved to %d, want %d",
+			got, row.window(shown))
+	}
+}
+
 func TestATickedFolderAndATypedOneAreOneList(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
@@ -552,7 +626,11 @@ func TestATickedChipKeepsItsTick(t *testing.T) {
 	options := scan.NewOptions()
 	options.Path = "/p"
 	u := newUI(t, options, "")
-	view := screenOf(u, 160, 44)
+	_ = screenOf(u, 160, 44)
+	row := u.mustItem(t, "which ones").(*chips)
+	row.toggle(indexIn(row.names, "ai"))
+
+	view := frame(u, 160, 44)
 	if !strings.Contains(view, "[x] semgrep") {
 		t.Errorf("a ticked chip does not show its tick:\n%s", lineWith(view, "which ones"))
 	}
