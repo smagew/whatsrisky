@@ -81,6 +81,8 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
 .tool .more:hover { color: var(--ink); border-color: var(--line-strong); }
 .tooldetail { padding: 0 10px 9px 26px; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
 .tool .ver { color: var(--ink-3); font-size: 12px; }
+.tool .not-installed { color: var(--ink-3); font-style: italic; font-size: 12px; }
+.toolnote { padding: 0 10px 9px 26px; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
 .tool .dot { width: 8px; height: 8px; border-radius: 5px; flex: none; }
 .tool .dot.yes { background: var(--pass); }
 .tool .dot.no { background: var(--ink-3); }

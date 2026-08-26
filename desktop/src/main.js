@@ -142,6 +142,12 @@ function argv() {
   return a.filter(Boolean);
 }
 
+// cleanHint strips the runner's "`x` not found in PATH. Install: " boilerplate,
+// leaving just the instruction.
+function cleanHint(hint) {
+  return hint.replace(/^`[^`]+`\s*not found in PATH[.:]?\s*(Install:\s*)?/i, "").trim();
+}
+
 function splitList(text) {
   return text.split(",").map((s) => s.trim()).filter(Boolean);
 }
@@ -237,10 +243,15 @@ function renderTools() {
       button.addEventListener("click", () => installTool(tool.name, button));
       row.append(button);
     } else if (!tool.found) {
-      row.append(el("span", "covers", "manual: " + (tool.hint || "")));
+      row.append(el("span", "not-installed", "not installed"));
     }
 
     wrap.append(row);
+    // A tool we cannot install for you gets its how-to-get-it on its own line,
+    // without the "not found in PATH. Install:" boilerplate.
+    if (!tool.found && !tool.install && tool.hint) {
+      wrap.append(el("div", "toolnote", "get it: " + cleanHint(tool.hint)));
+    }
     if (tool.detail) {
       const detail = el("div", "tooldetail", tool.detail);
       detail.hidden = true;

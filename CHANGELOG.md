@@ -198,6 +198,12 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A tool the window cannot install for you reads cleanly.** zap showed
+  "manual: `zap-baseline.py` not found in PATH. Install: run the … Docker image" —
+  the description, then a line of doubled boilerplate. Now the row shows the
+  description and a plain "not installed", with the how-to-get-it on its own line
+  ("get it: run the ghcr.io/zaproxy/zaproxy Docker image …"), the "not found in
+  PATH. Install:" prefix stripped.
 - **Network findings now have a source of their own.** A finding's *source* — the
   axis the report groups and filters by — is inferred from its tool, and every tool
   added this release (surface, testssl, nuclei, zap, ffuf, llm-recon) fell through
