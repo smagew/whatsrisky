@@ -4,7 +4,9 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -77,8 +79,11 @@ fn tool(program: &str) -> Command {
 fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
     let program = binary(&bin);
     thread::spawn(move || {
+        // stdin is null: the AI pass drives an agentic CLI that must never block
+        // waiting for input that will not come.
         let mut child = match tool(&program)
             .args(&args)
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -97,9 +102,10 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
             }
         };
 
-        let mut reports: Vec<String> = Vec::new();
+        // Both streams drain on their own threads, so a full pipe never blocks the
+        // process. The report paths are collected into a shared vec.
+        let reports = Arc::new(Mutex::new(Vec::<String>::new()));
 
-        // stderr on its own thread; whatsrisky writes progress there.
         if let Some(stderr) = child.stderr.take() {
             let app = app.clone();
             thread::spawn(move || {
@@ -114,29 +120,37 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
                 }
             });
         }
-
-        // stdout on this thread; the report paths are printed there.
         if let Some(stdout) = child.stdout.take() {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Some(path) = line.strip_prefix("report ") {
-                    reports.push(path.trim().to_string());
+            let app = app.clone();
+            let reports = reports.clone();
+            thread::spawn(move || {
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    if let Some(path) = line.strip_prefix("report ") {
+                        reports.lock().unwrap().push(path.trim().to_string());
+                    }
+                    let _ = app.emit(
+                        "scan-line",
+                        Line {
+                            stream: "out".into(),
+                            text: line,
+                        },
+                    );
                 }
-                let _ = app.emit(
-                    "scan-line",
-                    Line {
-                        stream: "out".into(),
-                        text: line,
-                    },
-                );
-            }
+            });
         }
 
+        // Done when the process exits, not when the streams reach EOF: the agentic
+        // AI pass can leave a descendant holding the stdout pipe open, and waiting
+        // for EOF then hangs forever. A short grace lets the reader drain the last
+        // buffered lines (the "report" paths among them) before they are read.
         let code = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+        thread::sleep(Duration::from_millis(400));
+        let collected = reports.lock().unwrap().clone();
         let _ = app.emit(
             "scan-done",
             Done {
                 code,
-                reports,
+                reports: collected,
                 error: None,
             },
         );

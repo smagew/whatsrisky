@@ -203,6 +203,12 @@ All notable changes to this project are documented here. This project follows
   github.com/sensepost/gowitness@latest`. The install commands are now an explicit
   map — brew or go — and a command is offered only when the program it needs (brew
   or go) is actually on PATH.
+- **The desktop window shows a scan as finished even after the AI pass.** It knew a
+  run had ended by the stdout stream reaching EOF, but the agentic AI backend can
+  leave a descendant holding that pipe open, so EOF never came and the window sat
+  there though the scan was long done and the report written. It now ends on the
+  process exiting, draining the last output first, and runs the child with no stdin
+  so the agentic CLI cannot block waiting for input.
 - **The desktop window finds tools a GUI's minimal PATH hides.** A macOS app
   inherits a bare PATH, so a Homebrew or `go install` tool was present on disk but
   invisible to the scan the window launched. The window now runs the binary with
