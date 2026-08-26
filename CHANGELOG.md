@@ -5,7 +5,46 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-26
+
+### Changed
+
+- The settings form is now built with [huh](https://github.com/charmbracelet/huh)
+  instead of by hand. Bubble Tea is a framework, not a widget set, so the previous
+  form was 1,379 lines of our own field, focus and scrolling code — and every
+  defect reported in it was in that code. What replaces it is real widgets:
+  checkboxes that say whether they are ticked, selects that show the whole option,
+  descriptions under the field instead of in the value column, and a viewport that
+  scrolls rather than a form that draws past the bottom of the terminal.
+- The panel is given its width before the form, not after. Starving it is what
+  made the equivalent command break inside an argument and the warnings break
+  mid-phrase.
+
+### Fixed
+
+- The model dropped every message it did not recognise, and huh answers a
+  keypress with a command whose message is what moves the focus. The form could
+  not be navigated at all.
+- A resize widened the frame and left every description wrapped for the old
+  width, so the form kept its narrow text. The form is rebuilt on resize; the
+  fields bind to the same variables, so nothing typed is lost.
+- Exactly one field looks focused. The blurred styles were a copy of the focused
+  ones, which put the focus bar on all twenty fields at once.
+- A section heading can no longer be the first field: huh renders the whole group
+  as blank space when focus starts on one.
+- The scanner list in the panel no longer both wraps and gets an ellipsis.
+
+### Removed
+
+- Click-to-focus and wheel scrolling. Both existed to compensate for a form that
+  was hard to navigate by keyboard; the keyboard now works, and a fake click
+  target is worse than none. The key hint that outlived the mouse is gone with it.
+
+
 ## [0.3.1] - 2026-08-25
+
+Never published as a release: the release job cross-compiled everything and then
+died on `git tag`, which rejects `-F` with `-m`. These changes ship in 0.3.2.
 
 ### Fixed
 

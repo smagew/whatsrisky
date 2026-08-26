@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 
 	"github.com/smagew/whatsrisky/internal/config"
 	"github.com/smagew/whatsrisky/internal/model"
@@ -31,8 +32,8 @@ type Model struct {
 	options scan.Options
 	profile string
 
-	rows   []row
-	cursor int
+	form   *huh.Form
+	values *formValues
 
 	probes  []probeRow
 	probing bool
@@ -49,29 +50,25 @@ type Model struct {
 
 	width  int
 	height int
-	offset int // first visible line of the scrolling form
 	quit   bool
 	exit   int
 }
 
 // New builds the interface from what a launch should start from.
 func New(version string, options scan.Options, profile string) *Model {
-	m := &Model{version: version, rows: buildRows(), progress: progress.New(),
+	m := &Model{version: version, progress: progress.New(),
 		toolMessages: map[string]string{}, options: options, profile: profile, probing: true}
 	m.loadInto(options)
-	if profile != "" {
-		m.profileNameField().input.SetValue(profile)
-	}
-	m.focusCurrent()
+	// Launched from a profile, offer that name back: ctrl+s should update the
+	// profile you are looking at, not silently ask for a new one.
+	m.values.profileName = profile
 	return m
 }
 
 // Run opens the interface and returns the process exit code.
 func Run(version string, options scan.Options, profile string) (int, error) {
 	m := New(version, options, profile)
-	// The mouse is not a luxury here: the form has twenty rows, and clicking the
-	// one you want beats stepping to it.
-	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	program := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := program.Run()
 	if err != nil {
 		return 1, err
@@ -82,7 +79,7 @@ func Run(version string, options scan.Options, profile string) (int, error) {
 	return 0, nil
 }
 
-func (m *Model) Init() tea.Cmd { return probe }
+func (m *Model) Init() tea.Cmd { return tea.Batch(probe, m.form.Init()) }
 
 // --- messages --------------------------------------------------------
 
@@ -143,8 +140,15 @@ func tick() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
 	case tea.WindowSizeMsg:
+		if typed.Width == m.width && typed.Height == m.height {
+			return m, nil
+		}
 		m.width, m.height = typed.Width, typed.Height
-		return m, nil
+		// Rebuilt, not resized: WithWidth moves the frame but leaves every
+		// description wrapped for the old width, so a widened terminal keeps the
+		// narrow text. The fields bind to m.values, so nothing typed is lost.
+		m.form = m.values.form(m.formWidth(), m.bodyHeight())
+		return m, m.form.Init()
 
 	case probeResult:
 		m.probes = typed.rows
@@ -171,34 +175,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.MouseMsg:
-		return m.handleMouse(typed)
-
 	case tea.KeyMsg:
 		return m.handleKey(typed)
 	}
-	return m, nil
-}
 
-func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.mode != modeSettings {
-		return m, nil
-	}
-	switch msg.Button {
-	case tea.MouseButtonWheelUp:
-		m.offset = maxInt(0, m.offset-3)
-	case tea.MouseButtonWheelDown:
-		m.offset += 3
-	case tea.MouseButtonLeft:
-		if msg.Action != tea.MouseActionPress {
-			return m, nil
-		}
-		if row := m.rowAt(msg.Y); row >= 0 {
-			m.current().blur()
-			m.cursor = row
-			m.focusCurrent()
-			m.notice = ""
-		}
+	// Everything else goes to the form. huh answers a keypress with a command,
+	// and the message that command produces is what actually moves the focus -
+	// so a model that drops unknown messages has a form you cannot navigate.
+	if m.mode == modeSettings {
+		return m, m.updateForm(msg)
 	}
 	return m, nil
 }
@@ -239,23 +224,22 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	if m.current().update(msg) {
-		m.notice = ""
-		return m, nil
+	m.notice = ""
+	return m, m.updateForm(msg)
+}
+
+// updateForm hands a message to the form and keeps whatever it returns. A
+// completed form is the other way to start the scan: filling the last field and
+// confirming should run, not sit there.
+func (m *Model) updateForm(msg tea.Msg) tea.Cmd {
+	form, cmd := m.form.Update(msg)
+	if updated, ok := form.(*huh.Form); ok {
+		m.form = updated
 	}
-	switch msg.String() {
-	case "up", "shift+tab":
-		m.move(-1)
-	case "down", "tab", "enter":
-		m.move(1)
-	case "pgup":
-		m.offset = maxInt(0, m.offset-m.bodyHeight())
-	case "pgdown":
-		m.offset += m.bodyHeight()
-	case "home":
-		m.move(-m.cursor)
+	if m.form.State == huh.StateCompleted {
+		return m.start()
 	}
-	return m, nil
+	return cmd
 }
 
 func (m *Model) handleEvent(event scan.Event) {
@@ -304,26 +288,6 @@ func (m *Model) appendLog(line string) {
 
 func (m *Model) finished() bool { return m.outcome != nil || m.runErr != nil }
 
-func (m *Model) current() field { return m.rows[m.cursor].field }
-
-func (m *Model) move(delta int) {
-	m.current().blur()
-	m.cursor = (m.cursor + delta + len(m.rows)) % len(m.rows)
-	m.focusCurrent()
-}
-
-func (m *Model) focusCurrent() {
-	for index, entry := range m.rows {
-		if index == m.cursor {
-			entry.field.focus()
-		} else {
-			entry.field.blur()
-		}
-	}
-}
-
-// viewReport opens the page. The page or nothing: opening the JSON instead would
-// look like the button is broken.
 func (m *Model) viewReport() string {
 	target := m.livePath
 	if target == "" && m.outcome != nil {
