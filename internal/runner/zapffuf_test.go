@@ -105,3 +105,23 @@ func TestFfufRefusesWithoutActiveOrWordlist(t *testing.T) {
 		}
 	}
 }
+
+func TestFfufInstalledIsSeparateFromRunnable(t *testing.T) {
+	// The doctor bug: an installed ffuf read as missing because Available folded in
+	// the run-time gate. Installed answers presence; Available answers "can it run
+	// now"; Present (what doctor uses) tracks Installed.
+	f := NewFfuf(Config{Target: "https://x", NetActive: false})
+	if f.Available() {
+		t.Error("ffuf is not runnable without --net-active, so Available must be false")
+	}
+	if Present(f) != f.Installed() {
+		t.Errorf("Present should track Installed, not the gate: present=%v installed=%v",
+			Present(f), f.Installed())
+	}
+	// With the gate open and a wordlist, runnable iff installed.
+	open := NewFfuf(Config{Target: "https://x", NetActive: true, Wordlist: "/tmp/w.txt"})
+	if open.Available() != open.Installed() {
+		t.Errorf("with the gate open, Available should equal Installed: %v vs %v",
+			open.Available(), open.Installed())
+	}
+}

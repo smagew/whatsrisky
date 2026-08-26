@@ -84,7 +84,6 @@ type probe struct {
 // name, so a one-click install runs the right formula or cask.
 var brewPackage = map[string]string{
 	"testssl": "brew install testssl",
-	"zap":     "brew install --cask owasp-zap",
 }
 
 // installCommand is how to install a tool on this platform, or "" when whatsrisky
@@ -107,7 +106,7 @@ func installCommand(name string, found bool) string {
 // perimeter tools, all Homebrew formulae. "ai" is not here — you cannot brew a key.
 var installableNames = map[string]bool{
 	"semgrep": true, "trivy": true, "gitleaks": true,
-	"testssl": true, "nuclei": true, "zap": true, "ffuf": true,
+	"testssl": true, "nuclei": true, "ffuf": true,
 	"subfinder": true, "dnsx": true, "httpx": true, "gowitness": true, "katana": true,
 }
 
@@ -127,7 +126,7 @@ func probeTools() []probe {
 		switch {
 		case err != nil:
 			entry.hint = err.Error()
-		case built.Available():
+		case runner.Present(built):
 			entry.found = true
 			entry.version = built.Version()
 		default:

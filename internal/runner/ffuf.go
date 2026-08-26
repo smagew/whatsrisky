@@ -43,8 +43,14 @@ func (f *Ffuf) Version() string { return proc.Version(f.binary, "-V") }
 // the authorization to send attack traffic, and a wordlist. A no with a reason is
 // how the report shows a pass that did not run and why.
 func (f *Ffuf) Available() bool {
-	return proc.Which(f.binary) != "" && f.config.NetActive && f.wordlist() != ""
+	return f.Installed() && f.config.NetActive && f.wordlist() != ""
 }
+
+// Installed reports only whether the binary is present, which is what doctor asks:
+// whether ffuf can run at all is a scan-time gate (--net-active, a wordlist), not an
+// install question. Folding the gate into Available made an installed ffuf read as
+// missing.
+func (f *Ffuf) Installed() bool { return proc.Which(f.binary) != "" }
 
 func (f *Ffuf) UnavailableReason() string {
 	if proc.Which(f.binary) == "" {

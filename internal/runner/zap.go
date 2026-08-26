@@ -29,10 +29,9 @@ func NewZAP(config Config) *ZAP {
 	return &ZAP{binaryRunner: binaryRunner{
 		binary: "zap-baseline.py",
 		hints: installHints{
-			"darwin":  "brew install --cask owasp-zap (the zap-*.py scripts ship with it)",
-			"linux":   "run the ghcr.io/zaproxy/zaproxy image, or install ZAP and use its zap-baseline.py",
-			"windows": "run the ghcr.io/zaproxy/zaproxy Docker image",
-			"default": "https://www.zaproxy.org/docs/docker/about/",
+			// The packaged scan scripts are not on PATH from the desktop app or the
+			// Homebrew cask; the Docker image ships them ready to run.
+			"default": "run the ghcr.io/zaproxy/zaproxy Docker image, which ships zap-baseline.py — see https://www.zaproxy.org/docs/docker/",
 		},
 		config: config,
 	}}

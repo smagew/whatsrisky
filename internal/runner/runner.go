@@ -70,6 +70,22 @@ type Runner interface {
 	Scan(progress func(string)) (Outcome, error)
 }
 
+// Installable is an optional interface for a runner whose "is it present" answer
+// differs from "can it run now". ffuf is present as soon as its binary is, but only
+// runs with --net-active and a wordlist; doctor asks the first question.
+type Installable interface {
+	Installed() bool
+}
+
+// Present reports whether a runner's tool is installed, using Installed when the
+// runner draws the distinction and Available otherwise.
+func Present(r Runner) bool {
+	if inst, ok := r.(Installable); ok {
+		return inst.Installed()
+	}
+	return r.Available()
+}
+
 // Progress is a no-op-safe progress callback.
 func Progress(callback func(string)) func(string) {
 	if callback == nil {

@@ -24,9 +24,13 @@ func TestInstallableToolsHaveACommandOnMac(t *testing.T) {
 	if cmd := installCommand("ai", false); cmd != "" {
 		t.Errorf("ai should not be installable, got %q", cmd)
 	}
-	// The two that differ from their tool name.
-	if installCommand("zap", false) != "brew install --cask owasp-zap" {
-		t.Errorf("zap: %q", installCommand("zap", false))
+	// testssl differs from its tool name; it is the one special case left.
+	if installCommand("testssl", false) != "brew install testssl" {
+		t.Errorf("testssl: %q", installCommand("testssl", false))
+	}
+	// zap is deliberately not one-click: the cask does not provide zap-baseline.py.
+	if installCommand("zap", false) != "" {
+		t.Errorf("zap should not offer a one-click install: %q", installCommand("zap", false))
 	}
 }
 
