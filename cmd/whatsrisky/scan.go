@@ -62,6 +62,11 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 		jsonStdout   = flags.Bool("json-stdout", false, "write the JSON report to stdout and nothing else")
 		showExcl     = flags.Bool("show-excludes", false, "print the effective skip list and exit")
 		noDefaults   = flags.Bool("no-default-excludes", false, "also scan node_modules, vendor, dist and the rest")
+		target       = flags.String("target", "", "scan a live address (http/https URL) instead of a folder")
+		authorized   = flags.Bool("i-am-authorized", false, "confirm you may scan the target address (required for a network scan)")
+		netActive    = flags.Bool("net-active", false, "allow passes that send attack-shaped traffic (off by default)")
+		noLLM        = flags.Bool("no-llm", false, "drop the LLM recon pass from a network scan")
+		passes       = flags.String("passes", "", "comma list of network passes (default surface,nuclei,llm-recon)")
 	)
 	var excludes, semgrepConfigs stringList
 	flags.Var(&excludes, "exclude", "directory, path or glob to skip (repeatable)")
@@ -72,55 +77,67 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 		return 1
 	}
 
+	// A network scan is asked for by --target or by a positional that is plainly a
+	// URL. Everything about the run then comes from a different vocabulary, so this
+	// decision is made before anything else is assembled.
+	netTarget := strings.TrimSpace(*target)
+	if netTarget == "" && len(positional) > 0 && looksLikeURL(positional[0]) {
+		netTarget = positional[0]
+	}
+
 	options := scan.NewOptions()
-	if *profileName != "" {
-		loaded, ok := config.LoadProfile(*profileName)
-		if !ok {
-			fmt.Fprintf(stderr, "no such profile: %s (have: %s)\n",
-				*profileName, orNone(strings.Join(config.ProfileNames(), ", ")))
+	switch {
+	case netTarget != "":
+		options.Target = netTarget
+		options.Tools = append([]string(nil), scan.DefaultNetTools...)
+		options.Authorized = *authorized
+		options.NetActive = *netActive
+		options.Tools = chooseNetPasses(options.Tools, *passes, *noLLM)
+
+	default:
+		if *profileName != "" {
+			loaded, ok := config.LoadProfile(*profileName)
+			if !ok {
+				fmt.Fprintf(stderr, "no such profile: %s (have: %s)\n",
+					*profileName, orNone(strings.Join(config.ProfileNames(), ", ")))
+				return 1
+			}
+			options = loaded
+		}
+		if len(positional) > 0 {
+			options.Path = positional[0]
+		}
+		if options.Path == "" {
+			fmt.Fprintln(stderr, "which project? give a path, a URL, or run `whatsrisky ui`")
 			return 1
 		}
-		options = loaded
-	}
-
-	if len(positional) > 0 {
-		options.Path = positional[0]
-	}
-	if options.Path == "" {
-		fmt.Fprintln(stderr, "which project? give a path, or run `whatsrisky ui`")
-		return 1
-	}
-
-	// The folder's own settings, unless a profile was named - a name is asked for
-	// explicitly and wins. Flags are applied after either, so a flag on the line
-	// always has the last word.
-	//
-	// Said out loud: settings coming from a file the caller did not mention on the
-	// line is exactly the kind of thing that has to be visible.
-	if *profileName == "" {
-		if stored, ok := config.LoadProject(options.Path); ok {
-			target := options.Path
-			options = stored
-			options.Path = target
-			fmt.Fprintf(stderr, "using %s from %s\n", config.ProjectFile, options.Path)
-		}
-	}
-
-	// Naming a Claude setting is an unambiguous request for the AI pass.
-	wantsAI := *useAI || *aiProvider != "" || *modelName != "" || *aiMode != ""
-	options.Tools = chooseTools(options.Tools, *tools, wantsAI, *noAI)
-	if *skip != "" {
-		skipped := map[string]bool{}
-		for _, name := range splitList(*skip) {
-			skipped[name] = true
-		}
-		var kept []string
-		for _, name := range options.Tools {
-			if !skipped[name] {
-				kept = append(kept, name)
+		// The folder's own settings, unless a profile was named - a name is asked
+		// for explicitly and wins. A flag on the line beats both. Settings coming
+		// from a file the caller did not mention are said out loud.
+		if *profileName == "" {
+			if stored, ok := config.LoadProject(options.Path); ok {
+				keep := options.Path
+				options = stored
+				options.Path = keep
+				fmt.Fprintf(stderr, "using %s from %s\n", config.ProjectFile, options.Path)
 			}
 		}
-		options.Tools = kept
+		// Naming a Claude setting is an unambiguous request for the AI pass.
+		wantsAI := *useAI || *aiProvider != "" || *modelName != "" || *aiMode != ""
+		options.Tools = chooseTools(options.Tools, *tools, wantsAI, *noAI)
+		if *skip != "" {
+			skipped := map[string]bool{}
+			for _, name := range splitList(*skip) {
+				skipped[name] = true
+			}
+			var kept []string
+			for _, name := range options.Tools {
+				if !skipped[name] {
+					kept = append(kept, name)
+				}
+			}
+			options.Tools = kept
+		}
 	}
 
 	if *format != "" {
@@ -337,6 +354,27 @@ func (c *console) finish(outcome scan.Outcome, options scan.Options, jsonStdout,
 // --no-ai has the last word, deliberately, and beats every way of asking for the
 // pass including naming a model. Someone who spelled out "do not spend my money"
 // must not be overruled by a flag they left on the line.
+// looksLikeURL is true for an argument that is plainly a web address, so
+// `whatsrisky https://x` is a network scan without needing --target. A bare path
+// is never mistaken for one: the http/https scheme is required.
+func looksLikeURL(arg string) bool {
+	return strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://")
+}
+
+// chooseNetPasses settles which network passes run. --no-llm drops the recon
+// pass; --passes replaces the set outright. Kept apart from the command, and
+// tested, because the recon pass spends money.
+func chooseNetPasses(current []string, named string, noLLM bool) []string {
+	passes := current
+	if named != "" {
+		passes = splitList(named)
+	}
+	if noLLM {
+		passes = withoutTool(passes, "llm-recon")
+	}
+	return passes
+}
+
 func chooseTools(current []string, named string, wantsAI, noAI bool) []string {
 	tools := current
 	if named != "" {

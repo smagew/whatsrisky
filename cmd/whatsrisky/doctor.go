@@ -23,9 +23,16 @@ type probe struct {
 
 func probeTools() []probe {
 	config := runner.Config{Target: ".", WorkDir: os.TempDir(), AIProvider: "claude-cli"}
-	out := make([]probe, 0, len(scan.AllTools))
-	for _, name := range scan.AllTools {
-		entry := probe{name: name, covers: scan.ToolCoverage[name]}
+	// The filesystem scanners, then the network passes: doctor should say what is
+	// installed for both kinds of scan.
+	names := append(append([]string(nil), scan.AllTools...), scan.NetTools...)
+	out := make([]probe, 0, len(names))
+	for _, name := range names {
+		covers := scan.ToolCoverage[name]
+		if covers == "" {
+			covers = scan.NetToolCoverage[name]
+		}
+		entry := probe{name: name, covers: covers}
 		built, err := runner.New(name, config)
 		switch {
 		case err != nil:

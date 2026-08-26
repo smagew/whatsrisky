@@ -38,6 +38,12 @@ type Config struct {
 	AITimeout      time.Duration
 	AIMaxFindings  int
 	AIContextBytes int
+
+	// Network scans. Target carries the URL; NetActive lets a pass send
+	// attack-shaped traffic rather than only reading what is served.
+	SurfaceTimeout time.Duration
+	NucleiTimeout  time.Duration
+	NetActive      bool
 }
 
 // Outcome is what a scan produced, plus the things a report has to say about how
@@ -148,6 +154,12 @@ func New(name string, config Config) (Runner, error) {
 		return NewGitleaks(config), nil
 	case "ai":
 		return NewAI(config)
+	case "surface":
+		return NewSurface(config), nil
+	case "nuclei":
+		return NewNuclei(config), nil
+	case "llm-recon":
+		return NewLLMRecon(config)
 	}
 	return nil, fmt.Errorf("unknown scanner %q", name)
 }

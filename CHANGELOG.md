@@ -5,6 +5,38 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-26
+
+### Added
+
+- **A network scan: point whatsrisky at a live address, not just a folder.**
+  `whatsrisky https://example.com --i-am-authorized` runs three passes and
+  normalises their findings onto the same severity scale as the code scan.
+  - **surface** — pure Go, fully observational: TLS and certificate, the security
+    headers a site is missing, version-leaking headers, insecure cookies, and the
+    paths robots.txt asks crawlers to avoid. It sends only the GETs a browser
+    makes.
+  - **nuclei** — ProjectDiscovery's template scanner for known CVEs, misconfig and
+    exposures. By default it excludes the templates that send payloads (fuzzing,
+    injection); `--net-active` includes them, and the report says which ran.
+  - **llm-recon** — a language model reads what the site serves and reasons about
+    where to look by hand. Its findings are leads to verify, not confirmed holes,
+    and it says so. Opt-in and paid, like the code AI pass; `--no-llm` drops it.
+- **Authorization is required and stated.** A network scan refuses to start without
+  `--i-am-authorized`; the target and the fact of authorization are recorded, and
+  the equivalent command always shows the flag. Pointing this tool at an address
+  you do not control is the caller's responsibility, stated rather than assumed.
+- `doctor` now reports the network passes too, so you can see whether `nuclei` is
+  installed before you rely on it.
+
+### Notes
+
+- The two scan kinds keep separate vocabularies: the code scanners never run
+  against a URL and the network passes never run against a folder, each refusing
+  with the reason rather than pretending. Observational is the default throughout;
+  anything that sends attack-shaped traffic is behind `--net-active`.
+
+
 ## [0.4.0] - 2026-08-26
 
 ### Changed

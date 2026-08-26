@@ -3,6 +3,7 @@ package scan
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -65,12 +66,23 @@ func Run(options Options, handler Handler) (Outcome, error) {
 		return Outcome{}, errors.New(strings.Join(problems, "; "))
 	}
 
-	target, err := filepath.Abs(options.Path)
-	if err != nil {
-		return Outcome{}, err
+	var err error
+	network := options.IsNetwork()
+	target := options.Path
+	label := filepath.Base(target)
+	if network {
+		target = options.Target
+		label = targetSlug(target)
+	} else {
+		abs, absErr := filepath.Abs(options.Path)
+		if absErr != nil {
+			return Outcome{}, absErr
+		}
+		target = abs
+		label = filepath.Base(target)
 	}
 	stamp := time.Now()
-	base := fmt.Sprintf("%s-%s", slugify(filepath.Base(target)), stamp.Format("20060102-150405"))
+	base := fmt.Sprintf("%s-%s", slugify(label), stamp.Format("20060102-150405"))
 
 	outDir := options.OutDir
 	if outDir == "" {
@@ -118,7 +130,7 @@ func Run(options Options, handler Handler) (Outcome, error) {
 	}
 
 	var scopePaths []string
-	if options.Diff != "" {
+	if options.Diff != "" && !network {
 		if scopePaths, err = ChangedFiles(target, options.Diff); err != nil {
 			return Outcome{}, err
 		}
@@ -130,11 +142,15 @@ func Run(options Options, handler Handler) (Outcome, error) {
 		}
 	}
 
-	excludes := append(options.EffectiveExcludes(), selfOutputExcludes(target, outDir, workDir)...)
-	commit, branch := gitInfo(target)
+	var excludes []string
+	var commit, branch string
+	if !network {
+		excludes = append(options.EffectiveExcludes(), selfOutputExcludes(target, outDir, workDir)...)
+		commit, branch = gitInfo(target)
+	}
 
 	current := model.Report{
-		ProjectPath: target, ProjectName: filepath.Base(target), ScanID: base,
+		ProjectPath: target, ProjectName: label, ScanID: base,
 		StartedAt: stamp.Format("2006-01-02 15:04:05"),
 		GitCommit: commit, GitBranch: branch,
 		DiffRange: options.Diff, ScopePaths: scopePaths,
@@ -166,6 +182,9 @@ func Run(options Options, handler Handler) (Outcome, error) {
 		AITimeout:       seconds(options.AITimeout),
 		AIMaxFindings:   options.AIMaxFindings,
 		AIContextBytes:  options.AIContextBytes,
+		SurfaceTimeout:  seconds(minInt(options.Timeout, 60)),
+		NucleiTimeout:   seconds(options.Timeout),
+		NetActive:       options.NetActive,
 	}
 
 	started := time.Now()
@@ -362,6 +381,15 @@ func minInt(a, b int) int {
 }
 
 var slugPattern = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
+// targetSlug turns a URL into the host, so a report file is named for the site
+// rather than for "https:".
+func targetSlug(target string) string {
+	if u, err := url.Parse(target); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return target
+}
 
 func slugify(value string) string {
 	out := strings.Trim(slugPattern.ReplaceAllString(value, "-"), "-")

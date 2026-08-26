@@ -5,6 +5,7 @@ package scan
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -15,8 +16,16 @@ import (
 // otherwise. The AI pass is not a default: it spends the caller's money and sends
 // code to a third party.
 var (
-	AllTools     = []string{"semgrep", "trivy", "gitleaks", "ai"}
-	DefaultTools = []string{"semgrep", "trivy", "gitleaks", "ai"}
+	AllTools = []string{"semgrep", "trivy", "gitleaks", "ai"}
+
+	// NetTools scan a live address rather than a folder. They are a separate set:
+	// nuclei against a URL and semgrep against a URL are not the same request, and
+	// nothing good comes of pretending one vocabulary covers both.
+	NetTools = []string{"surface", "nuclei", "llm-recon"}
+	// DefaultNetTools is every network pass. The LLM recon spends money and is
+	// opt-out with --no-llm, the same shape as the filesystem ai pass.
+	DefaultNetTools = []string{"surface", "nuclei", "llm-recon"}
+	DefaultTools    = []string{"semgrep", "trivy", "gitleaks", "ai"}
 
 	// ToolsWithoutAI is the default set with the review pass taken out. It exists
 	// so turning the pass off is one flag rather than a list of the other three.
@@ -35,6 +44,14 @@ var (
 		"trivy":    "Dependency CVEs, IaC misconfig",
 		"gitleaks": "Secrets in tree and git history",
 		"ai":       "LLM review of logic and authz",
+	}
+
+	// NetToolCoverage says what each network pass looks at, for the report and the
+	// doctor. Honesty about coverage is the same rule as everywhere else.
+	NetToolCoverage = map[string]string{
+		"surface":   "TLS, headers, cookies, robots.txt — what the server volunteers",
+		"nuclei":    "Known CVEs, misconfig and exposures by template",
+		"llm-recon": "LLM reading of the surface for weak spots to check by hand",
 	}
 )
 
@@ -69,7 +86,22 @@ type Options struct {
 	OpenReport         bool     `json:"open_report"`
 	Baseline           string   `json:"baseline"`
 	Compare            bool     `json:"compare"`
+
+	// Target is a live address to scan instead of a folder. When it is set the scan
+	// is a network scan, the tools come from NetTools, and Path is not consulted.
+	Target string `json:"target,omitempty"`
+	// Authorized is the caller's statement that they may scan Target. A network
+	// scan refuses to start without it: pointing this tool at an address you do not
+	// control is the caller's responsibility, stated, not assumed.
+	Authorized bool `json:"-"`
+	// NetActive allows passes that send attack-shaped traffic - nuclei's fuzzing
+	// and injection templates. Off by default: the rest only reads what the server
+	// already serves.
+	NetActive bool `json:"net_active,omitempty"`
 }
+
+// IsNetwork reports whether this is a scan of a live address rather than a folder.
+func (o Options) IsNetwork() bool { return strings.TrimSpace(o.Target) != "" }
 
 // NewOptions is the defaults. Anything that reads a stored config must start here
 // so a missing key means "the default", not the zero value.
@@ -97,7 +129,7 @@ func NewOptions() Options {
 // Normalized resolves the combinations that cannot work as configured.
 func (o Options) Normalized() Options {
 	out := o
-	out.Tools = canonicalTools(o.Tools)
+	out.Tools = canonicalTools(o.Tools, o.IsNetwork())
 	out.Formats = keepOrder(FormatChoices, o.Formats)
 	if out.Offline && len(out.SemgrepConfigs) == 1 && out.SemgrepConfigs[0] == "auto" {
 		// `--config auto` fetches rules from the registry; offline needs a pack.
@@ -111,7 +143,11 @@ func (o Options) Normalized() Options {
 	return out
 }
 
-func canonicalTools(tools []string) []string {
+func canonicalTools(tools []string, network bool) []string {
+	vocab := AllTools
+	if network {
+		vocab = NetTools
+	}
 	seen := map[string]bool{}
 	for _, tool := range tools {
 		if mapped, ok := ToolAliases[tool]; ok {
@@ -119,7 +155,7 @@ func canonicalTools(tools []string) []string {
 		}
 		seen[tool] = true
 	}
-	return keepOrderSet(AllTools, seen)
+	return keepOrderSet(vocab, seen)
 }
 
 func keepOrder(order, chosen []string) []string {
@@ -174,7 +210,62 @@ func (o Options) HasTool(name string) bool {
 
 // CommandLine is the equivalent invocation. The terminal UI shows it, which is
 // what keeps the flags and the form from drifting apart.
+// networkCommandLine renders the equivalent command for a network scan. The
+// address is the argument; --i-am-authorized is always shown, because a scan that
+// needs it should read as one that needs it.
+func (o Options) networkCommandLine() string {
+	parts := []string{"whatsrisky", o.Target, "--i-am-authorized"}
+	add := func(values ...string) { parts = append(parts, values...) }
+
+	switch {
+	case sameSet(o.Tools, DefaultNetTools):
+	case sameSet(o.Tools, without(DefaultNetTools, "llm-recon")):
+		add("--no-llm")
+	case len(o.Tools) > 0:
+		add("--passes", strings.Join(o.Tools, ","))
+	default:
+		add("--passes", "none")
+	}
+	if o.NetActive {
+		add("--net-active")
+	}
+	if !sameSet(o.Formats, FormatChoices) {
+		add("--format", strings.Join(o.Formats, ","))
+	}
+	if o.OutDir != "" {
+		add("--out-dir", o.OutDir)
+	}
+	if o.HasTool("llm-recon") {
+		if o.AIProvider != "claude-cli" && o.AIProvider != "" {
+			add("--ai-provider", o.AIProvider)
+		}
+		if o.Model != "" {
+			add("--model", o.Model)
+		}
+	}
+	if o.MinSeverity != "" && o.MinSeverity != "INFO" {
+		add("--min-severity", o.MinSeverity)
+	}
+	if o.FailOn != "" && o.FailOn != "none" {
+		add("--fail-on", o.FailOn)
+	}
+	return strings.Join(parts, " ")
+}
+
+func without(list []string, drop string) []string {
+	var out []string
+	for _, name := range list {
+		if name != drop {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 func (o Options) CommandLine() string {
+	if o.IsNetwork() {
+		return o.networkCommandLine()
+	}
 	parts := []string{"whatsrisky", or(o.Path, ".")}
 	add := func(values ...string) { parts = append(parts, values...) }
 
@@ -297,6 +388,9 @@ func sameSet(a, b []string) bool {
 
 // Validate lists the reasons a scan cannot start. Empty means good to go.
 func (o Options) Validate(isDir func(string) bool) []string {
+	if o.IsNetwork() {
+		return o.validateNetwork()
+	}
 	var problems []string
 	switch {
 	case strings.TrimSpace(o.Path) == "":
@@ -316,4 +410,50 @@ func (o Options) Validate(isDir func(string) bool) []string {
 		problems = append(problems, "No output format selected.")
 	}
 	return problems
+}
+
+// validateNetwork is the network scan's own checks. The one that matters most is
+// authorization: a scan of an address is refused unless the caller has said they
+// may run it.
+func (o Options) validateNetwork() []string {
+	var problems []string
+	if reason := ValidateTarget(o.Target); reason != "" {
+		problems = append(problems, reason)
+	}
+	if !o.Authorized {
+		problems = append(problems, "Scanning an address needs authorization: pass --i-am-authorized "+
+			"(or tick it in the form). You are stating you may scan "+o.Target+".")
+	}
+	if len(o.Tools) == 0 {
+		problems = append(problems, "No passes selected.")
+	}
+	for _, tool := range o.Tools {
+		if _, ok := NetToolCoverage[tool]; !ok {
+			problems = append(problems, fmt.Sprintf("Unknown network pass: %s", tool))
+		}
+	}
+	if len(o.Formats) == 0 {
+		problems = append(problems, "No output format selected.")
+	}
+	return problems
+}
+
+// ValidateTarget returns why a target is unusable, or "" if it is fine. A scheme
+// is required: guessing http for a bare host is how a scan hits the wrong port.
+func ValidateTarget(target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "No target address."
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return fmt.Sprintf("Not a URL: %s", target)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Sprintf("The target needs an http:// or https:// scheme: %s", target)
+	}
+	if u.Host == "" {
+		return fmt.Sprintf("The target has no host: %s", target)
+	}
+	return ""
 }

@@ -1,8 +1,10 @@
 # CLAUDE.md — working on whatsrisky
 
-whatsrisky answers one question about a codebase: **what's risky here?** It runs
-Semgrep, Trivy, gitleaks and an LLM reviewer (`--no-ai` drops it), normalizes every
-finding onto one severity scale, and produces a report a person can act on —
+whatsrisky answers one question: **what's risky here?** About a codebase it runs
+Semgrep, Trivy, gitleaks and an LLM reviewer (`--no-ai` drops it); about a live
+address (`whatsrisky https://host --i-am-authorized`) it runs surface, nuclei and
+an LLM recon pass. It normalizes every finding onto one severity scale, and
+produces a report a person can act on —
 prioritized, with evidence, remediation, and an explicit statement of what was
 *not* scanned. See `README.md` for the product surface and `CHANGELOG.md` for the
 release history.
@@ -63,6 +65,23 @@ For any non-trivial change, in order:
    must be me, not the user.
 5. **"Done" means the checklist is fully met.** Green tests are not done. If the
    list is not fully met, say "partial — X and Y still open".
+
+## Network scans (the DAST side, added in 0.5.0)
+
+- **A target you do not own is the caller's call, made explicitly.** A network scan
+  refuses without `--i-am-authorized`; the target and the affirmation are in the
+  report, and the equivalent command always shows the flag. Never widen this into
+  an implicit default.
+- **Observational is the default; attack traffic is behind `--net-active`.** surface
+  sends only browser GETs. nuclei excludes its payload-sending templates unless
+  --net-active is passed, and the report states which mode ran. Do not let a pass
+  send an attack no one asked for.
+- **llm-recon returns leads, not verdicts.** It reasons over what the site serves;
+  its findings are tentative by design and the note says so. Never present them as
+  confirmed vulnerabilities.
+- **The two vocabularies do not mix.** `NetTools` scan a URL, `AllTools` scan a
+  folder; a code scanner against a URL, or a network pass against a folder, is a
+  category error, not a feature. `Options.IsNetwork()` is the switch.
 
 ## Conventions (enforced — do not relearn them the hard way)
 

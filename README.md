@@ -57,6 +57,32 @@ whatsrisky ~/www/app --fail-on high       # exit 2 for CI when HIGH+ exists
 whatsrisky                                # no arguments: the settings UI
 ```
 
+### Scanning a live address
+
+Point it at a URL instead of a folder and it scans the running site rather than
+the source:
+
+```bash
+whatsrisky https://staging.example.com --i-am-authorized   # surface + nuclei + llm-recon
+whatsrisky https://staging.example.com --i-am-authorized --no-llm      # skip the paid LLM pass
+whatsrisky https://staging.example.com --i-am-authorized --net-active  # allow attack-shaped probes
+```
+
+Three passes, each on the same severity scale as the code scan:
+
+- **surface** reads only what the server serves a visitor — TLS, missing security
+  headers, version leaks, insecure cookies, the robots.txt Disallow list. It sends
+  nothing an attacker would.
+- **nuclei** runs [ProjectDiscovery's](https://github.com/projectdiscovery/nuclei)
+  templates for known CVEs, misconfig and exposures. By default it leaves out the
+  templates that send payloads; `--net-active` includes them.
+- **llm-recon** has a model read the surface and point out where to look by hand.
+  Its findings are leads to verify, not confirmed holes.
+
+`--i-am-authorized` is required, and it is not decoration: you are stating you may
+scan that address. Scanning a host you do not control may be illegal. The target
+and the affirmation are recorded in the report.
+
 ## The report view
 
 `report.html` is one self-contained file — no network, no tooling, double-click it.
