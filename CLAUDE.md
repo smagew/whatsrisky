@@ -79,6 +79,11 @@ For any non-trivial change, in order:
 - **llm-recon returns leads, not verdicts.** It reasons over what the site serves;
   its findings are tentative by design and the note says so. Never present them as
   confirmed vulnerabilities.
+- **Perimeter is an orchestrator, not a second engine.** `internal/perimeter`
+  discovers assets (subfinder → dnsx → httpx) and fans the per-target passes across
+  them via `runner.New`; it reuses the severity scale, the report and the writers
+  rather than reimplementing them. A discovery tool that is absent is a stated gap,
+  carried into the report's `discovery` tool result, never a silent stop.
 - **The two vocabularies do not mix.** `NetTools` scan a URL, `AllTools` scan a
   folder; a code scanner against a URL, or a network pass against a folder, is a
   category error, not a feature. `Options.IsNetwork()` is the switch.

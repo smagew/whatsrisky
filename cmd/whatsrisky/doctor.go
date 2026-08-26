@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/smagew/whatsrisky/internal/perimeter"
+	"github.com/smagew/whatsrisky/internal/proc"
 	"github.com/smagew/whatsrisky/internal/runner"
 	"github.com/smagew/whatsrisky/internal/scan"
 )
@@ -44,6 +46,19 @@ func probeTools() []probe {
 			// Only ask why when it is actually missing: probing a healthy backend
 			// for a failure reason produces a misleading string.
 			entry.hint = built.UnavailableReason()
+		}
+		out = append(out, entry)
+	}
+	// The perimeter discovery tools are not runners (they feed the fan-out, they do
+	// not produce findings), so they are probed directly. They are optional: a
+	// perimeter scan degrades and says what it could not run.
+	for _, name := range perimeter.Tools {
+		entry := probe{name: name, covers: "perimeter discovery (optional)"}
+		if path := proc.Which(name); path != "" {
+			entry.found = true
+			entry.version = proc.Version(name, "-version")
+		} else {
+			entry.hint = "`" + name + "` not found in PATH — needed for `whatsrisky perimeter`"
 		}
 		out = append(out, entry)
 	}

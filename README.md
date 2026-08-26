@@ -99,6 +99,25 @@ whatsrisky https://staging.example.com --i-am-authorized \
 scan that address. Scanning a host you do not control may be illegal. The target
 and the affirmation are recorded in the report.
 
+### Scanning a whole estate
+
+Point it at a domain and it maps the perimeter first, then scans everything it
+finds:
+
+```bash
+whatsrisky perimeter example.com --i-am-authorized
+```
+
+Discovery is the [ProjectDiscovery](https://github.com/projectdiscovery) chain —
+`subfinder` finds subdomains, `dnsx` resolves them, `httpx` reports which answer
+over HTTP and what they run. Each tool is optional; a missing one is a stated gap,
+and whatsrisky still scans what it could find. Every alive asset then gets the
+observational passes (surface, testssl, nuclei), rolled into one report where each
+finding carries the asset it came from.
+
+`--i-am-authorized` is sharper here: you are stating you may scan the domain and
+every host under it.
+
 ## The report view
 
 `report.html` is one self-contained file — no network, no tooling, double-click it.

@@ -5,6 +5,34 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-26
+
+### Added
+
+- **Perimeter mode: scan a whole estate, not one address.**
+  `whatsrisky perimeter example.com --i-am-authorized` discovers the live web
+  assets under a domain and runs the observational passes across every one of
+  them, into a single report.
+  - **Discovery** is the ProjectDiscovery chain — subfinder (subdomains) → dnsx
+    (resolve) → httpx (which are alive, and their stack). Each tool is optional: a
+    missing one is a stated gap, not a stop, and the chain still returns what it
+    could find. The inventory is printed live and recorded in the report as its own
+    `discovery` tool result, so an absent tool is visible there too.
+  - **Fan-out** runs surface, testssl and nuclei on each alive asset; every finding
+    carries the asset it came from. llm-recon is left out by default — a paid model
+    call per asset across an estate is a cost to ask for with `--passes`.
+  - Authorization is required and sharper than for a single target: you are stating
+    you may scan the domain and every host under it.
+  - `doctor` now reports the discovery tools too.
+
+### Notes
+
+- Perimeter is an orchestrator over the single-target scan, in this repo by design:
+  the severity scale, the report and the honesty rules are shared, not
+  reimplemented. gowitness screenshots, a katana crawl feeding nuclei, and a proper
+  per-asset section in the JSON report (a schema change) are the next steps.
+
+
 ## [0.5.0] - 2026-08-26
 
 ### Added
