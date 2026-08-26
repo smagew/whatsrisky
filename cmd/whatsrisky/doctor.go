@@ -24,6 +24,38 @@ type toolStatus struct {
 	Hint    string   `json:"hint"`
 	Install string   `json:"install"` // the command to install it, or "" if we cannot
 	Modes   []string `json:"modes"`   // which UI tabs use it: folder / address / domain
+	Detail  string   `json:"detail"`  // a fuller "what it does", for a "more" panel
+}
+
+// toolDetail is the fuller "what does this do" for each tool, shown behind a "more"
+// in the UI. The one-line summary is covers (from the runner vocabularies); this is
+// the paragraph. Kept here because it is UI copy, not scan behaviour.
+// perimeterCovers is the one-line summary for the discovery tools, which are not
+// runners and so have no ToolCoverage entry.
+var perimeterCovers = map[string]string{
+	"subfinder": "Finds subdomains (optional)",
+	"dnsx":      "Resolves the names found (optional)",
+	"httpx":     "Finds which hosts are alive over HTTP (optional)",
+	"gowitness": "Screenshots each live asset (optional)",
+	"katana":    "Crawls each asset for endpoints (optional)",
+}
+
+var toolDetail = map[string]string{
+	"semgrep":   "Static analysis of your own source code: injection, unsafe calls and risky patterns, matched by rules. Fast, and it never leaves your machine.",
+	"trivy":     "Checks your dependencies and infrastructure-as-code against known-vulnerability databases (CVEs) and misconfiguration rules. A finding here is usually fixed by a version bump or a config change.",
+	"gitleaks":  "Looks for secrets — API keys, tokens, passwords — in the working tree and across the whole git history, so a key committed and later deleted is still found.",
+	"ai":        "A language model reads the code for the flaws a rule cannot see: broken authorization, data flow across files, business-rule mistakes. It sends your code to the provider and spends money, so it is opt-out, and the report records which model found what.",
+	"surface":   "Reads only what a server serves an ordinary visitor — TLS, the security headers it is missing, version leaks, insecure cookies, the robots.txt disallow list. It sends nothing an attacker would, so it is safe on any address you may look at.",
+	"testssl":   "Deep TLS analysis with testssl.sh: cipher suites, protocol versions, the certificate chain, and the named transport vulnerabilities (Heartbleed, ROBOT, downgrade). It only completes handshakes.",
+	"nuclei":    "Runs ProjectDiscovery's community templates for known CVEs, misconfigurations and exposures. By default it excludes the templates that send payloads; --net-active includes the fuzzing and injection ones.",
+	"zap":       "OWASP ZAP through its scan scripts: a passive baseline that spiders the site and observes, or — with --net-active — the full active scan that sends attack rules. The scripts ship with the ZAP Docker image.",
+	"ffuf":      "Brute-forces paths from a wordlist to find endpoints the site does not link to — forgotten admin panels, left-over files. That is attack-shaped traffic, so it needs --net-active and a wordlist.",
+	"llm-recon": "A language model reads the served surface and points out where a human should look by hand, based on what is observable. Its findings are leads to verify, not confirmed holes, and it spends money.",
+	"subfinder": "Enumerates the subdomains of the target domain from public sources, so the scan covers the estate and not just the front door.",
+	"dnsx":      "Resolves the discovered names and keeps the ones that answer DNS, trimming the list before anything is probed.",
+	"httpx":     "Probes which hosts answer over HTTP or HTTPS, and what stack each one advertises — the live assets worth scanning.",
+	"gowitness": "Loads each live asset in a headless browser and saves a screenshot, so a forgotten panel is obvious at a glance in the report.",
+	"katana":    "Crawls each asset and hands the endpoints it finds to nuclei, so nuclei checks the pages a site actually has. Enabled with --crawl.",
 }
 
 // modesFor says which UI tabs a tool belongs to, from the engine's own
@@ -56,6 +88,7 @@ func doctorJSON(probes []probe, stdout *os.File) int {
 			Covers: entry.covers, Hint: entry.hint,
 			Install: installCommand(entry.name, entry.found),
 			Modes:   modesFor(entry.name),
+			Detail:  toolDetail[entry.name],
 		})
 	}
 	body, err := json.MarshalIndent(out, "", "  ")
@@ -163,14 +196,7 @@ func probeTools() []probe {
 	// perimeter scan degrades and says what it could not run.
 	perimeterTools := append(append([]string(nil), perimeter.Tools...), perimeter.ScreenshotTool, perimeter.CrawlTool)
 	for _, name := range perimeterTools {
-		covers := "perimeter discovery (optional)"
-		if name == perimeter.ScreenshotTool {
-			covers = "perimeter screenshots (optional)"
-		}
-		if name == perimeter.CrawlTool {
-			covers = "perimeter crawl for --crawl (optional)"
-		}
-		entry := probe{name: name, covers: covers}
+		entry := probe{name: name, covers: perimeterCovers[name]}
 		if path := proc.Which(name); path != "" {
 			entry.found = true
 			entry.version = proc.Version(name, "-version")

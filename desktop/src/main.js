@@ -48,12 +48,22 @@ const els = {
   exclude: $("exclude"), model: $("model"), modelField: $("modelField"), modelList: $("modelList"),
   minsev: $("minsev"), command: $("command"), run: $("run"), status: $("status"),
   log: $("log"), reports: $("reports"), tools: $("tools"), toolprog: $("toolprog"),
+  modedesc: $("modedesc"),
 };
 
 const MODES = {
-  folder: { label: "Project folder", placeholder: "/path/to/project", hint: "The folder to scan on this machine." },
-  url: { label: "Address", placeholder: "https://staging.example.com", hint: "One live http/https address." },
-  domain: { label: "Domain", placeholder: "example.com", hint: "A domain: its live hosts are discovered, then each is scanned." },
+  folder: {
+    label: "Project folder", placeholder: "/path/to/project", hint: "The folder to scan on this machine.",
+    desc: "Reads the source code in a folder — static analysis for risky code, dependency CVEs, secrets in the tree and git history, and an optional AI review. Nothing leaves the machine unless you tick the AI pass.",
+  },
+  url: {
+    label: "Address", placeholder: "https://staging.example.com", hint: "One live http/https address.",
+    desc: "Scans one running address: its TLS and security headers, templates for known vulnerabilities, and an optional LLM look for weak spots. Observational by default — only what you tick runs, and attacks need --net-active.",
+  },
+  domain: {
+    label: "Domain", placeholder: "example.com", hint: "A domain: its live hosts are discovered, then each is scanned.",
+    desc: "Maps the whole estate under a domain — finds the subdomains, sees which are alive, screenshots them — then runs the observational passes across every one, into a single report.",
+  },
 };
 
 // tabMode maps the UI tab to the engine's mode name (the URL tab is "address").
@@ -158,6 +168,7 @@ function setMode(mode) {
   els.targetLabel.textContent = MODES[mode].label;
   els.target.placeholder = MODES[mode].placeholder;
   els.targetHint.textContent = MODES[mode].hint;
+  els.modedesc.textContent = MODES[mode].desc;
   renderTools();
   refresh();
 }
@@ -195,6 +206,7 @@ function renderTools() {
     return;
   }
   shown.forEach((tool) => {
+    const wrap = el("div", "toolwrap");
     const row = el("div", "tool");
     const selectable = SELECTABLE[mode].includes(tool.name);
 
@@ -213,7 +225,11 @@ function renderTools() {
     }
 
     row.append(el("span", "name", tool.name));
-    row.append(el("span", "covers", tool.found ? (tool.version || "installed") : (tool.covers || "")));
+    // The short "what it does" always; the version, when installed, as a quiet
+    // suffix so the description is what you read first.
+    const covers = el("span", "covers", tool.covers || "");
+    if (tool.found && tool.version) covers.append(el("span", "ver", "  · " + tool.version));
+    row.append(covers);
 
     if (!tool.found && tool.install) {
       const button = el("button", null, "Install");
@@ -223,7 +239,21 @@ function renderTools() {
     } else if (!tool.found) {
       row.append(el("span", "covers", "manual: " + (tool.hint || "")));
     }
-    els.tools.append(row);
+
+    wrap.append(row);
+    if (tool.detail) {
+      const detail = el("div", "tooldetail", tool.detail);
+      detail.hidden = true;
+      const more = el("button", "more", "more");
+      more.type = "button";
+      more.addEventListener("click", () => {
+        detail.hidden = !detail.hidden;
+        more.textContent = detail.hidden ? "more" : "less";
+      });
+      row.append(more);
+      wrap.append(detail);
+    }
+    els.tools.append(wrap);
   });
 }
 

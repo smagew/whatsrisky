@@ -41,6 +41,7 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
   border: 1px solid var(--line); border-radius: 5px; cursor: pointer; font: inherit;
 }
 .modes button[aria-pressed=true] { background: var(--panel); color: var(--ink); border-color: var(--mark); }
+.modedesc { font-size: 13px; color: var(--ink-3); margin: 0 0 14px; line-height: 1.5; }
 .check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; color: var(--ink-2); }
 .check input { accent-color: var(--mark); }
 .hint { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
@@ -74,7 +75,12 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
 
 /* tool inventory */
 .tools { display: flex; flex-direction: column; gap: 6px; }
-.tool { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
+.toolwrap { border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
+.tool { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 8px; }
+.tool .more { padding: 2px 8px; background: transparent; color: var(--ink-3); border: 1px solid var(--line); border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; }
+.tool .more:hover { color: var(--ink); border-color: var(--line-strong); }
+.tooldetail { padding: 0 10px 9px 26px; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.tool .ver { color: var(--ink-3); font-size: 12px; }
 .tool .dot { width: 8px; height: 8px; border-radius: 5px; flex: none; }
 .tool .dot.yes { background: var(--pass); }
 .tool .dot.no { background: var(--ink-3); }
