@@ -77,6 +77,17 @@ All notable changes to this project are documented here. This project follows
   handler now.
 - **The arrows walk the list.** `Pages` shows a page without moving the keyboard
   focus, so the arrows were still going to the form behind the overlay.
+- **A click can no longer fall through an overlay onto the screen behind it.**
+  This is what "everything breaks as soon as I click" was. The settings page stayed
+  live under the list, so a click the list did not want reached the form beneath —
+  and landing on a drop-down opened it *behind* the overlay, where it then captured
+  every further mouse event. The interface was not frozen; it was answering a
+  widget nobody could see. An overlay is a modal layer now: it swallows what it
+  does not use.
+- **A double click does what a single click does.** tview turns two clicks inside
+  its double-click interval into one `MouseLeftDoubleClick`, and nothing handled
+  that — not this code, not tview's own list. Clicking about at a normal pace, every
+  other click landed on nothing.
 - **Clicking beside an overlay closes it instead of freezing everything.** The
   space around it was a plain `Box`, and a `Box` takes the focus when clicked while
   being able to do nothing with it — one click beside the list left the interface

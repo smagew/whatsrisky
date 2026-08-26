@@ -102,10 +102,7 @@ func New(version string, options scan.Options, profile string) *UI {
 // Run opens the interface and returns the process exit code.
 func Run(version string, options scan.Options, profile string) (int, error) {
 	u := New(version, options, profile)
-	u.app = tview.NewApplication().
-		SetRoot(u.pages, true).
-		EnableMouse(true).
-		SetInputCapture(u.onKey)
+	u.app = u.newApp()
 	go u.probe()
 	if err := u.app.Run(); err != nil {
 		return 1, err
@@ -455,6 +452,30 @@ func (u *UI) update(change func()) {
 	})
 }
 
+// newApp is the one place the application is wired, so a test drives the same
+// program rather than one assembled to resemble it.
+func (u *UI) newApp() *tview.Application {
+	return tview.NewApplication().
+		SetRoot(u.pages, true).
+		EnableMouse(true).
+		SetInputCapture(u.onKey).
+		SetMouseCapture(asClick)
+}
+
+// asClick makes a double click do what a single click does.
+//
+// tview turns two clicks inside its double-click interval into one
+// MouseLeftDoubleClick, and nothing here handles that - not this code, and not
+// tview's own list. So clicking about at a normal pace, every other click landed
+// on nothing and the interface felt dead. Nowhere on these screens does a double
+// click mean something a single click does not, so the two are the same event.
+func asClick(event *tcell.EventMouse, action tview.MouseAction) (*tcell.EventMouse, tview.MouseAction) {
+	if action == tview.MouseLeftDoubleClick {
+		return event, tview.MouseLeftClick
+	}
+	return event, action
+}
+
 // focus hands the keyboard to a primitive. tview's Pages shows a page without
 // moving focus, so anything that opens has to ask for it.
 func (u *UI) focus(p tview.Primitive) {
@@ -537,7 +558,7 @@ func centred(inner tview.Primitive, width, height int, dismiss func()) tview.Pri
 		AddItem(row, height, 0, true).
 		AddItem(backdrop(dismiss), 0, 1, false)
 	frame.SetBackgroundColor(groundColor)
-	return frame
+	return modal(frame, dismiss)
 }
 
 // closeOverlay takes a page down and hands the keyboard back to the settings.

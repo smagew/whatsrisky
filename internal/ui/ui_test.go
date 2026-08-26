@@ -103,6 +103,10 @@ func (u *UI) pickerList(t *testing.T) *tview.List {
 		switch typed := p.(type) {
 		case *tview.List:
 			found = typed
+		case *modalLayer:
+			// The overlay wrapper is not a *tview.Flex to a type switch, and the
+			// walker used to stop here and report the list as missing.
+			walk(typed.Flex)
 		case *tview.Flex:
 			for index := 0; index < typed.GetItemCount(); index++ {
 				walk(typed.GetItem(index))

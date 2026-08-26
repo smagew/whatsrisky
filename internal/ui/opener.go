@@ -166,3 +166,35 @@ func (b *backdropBox) MouseHandler() func(action tview.MouseAction, event *tcell
 
 // InputHandler is nil: the backdrop is not a place the keyboard can end up.
 func (b *backdropBox) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) { return nil }
+
+// modalLayer is an overlay that nothing behind it can be clicked through.
+//
+// Without this the page underneath stayed live: a click the overlay did not want
+// fell through to the settings form, and landing on a drop-down opened it behind
+// the overlay - where it then captured every further mouse event. The interface was
+// not frozen, it was answering a widget nobody could see.
+type modalLayer struct {
+	*tview.Flex
+	dismiss func()
+}
+
+func modal(inner *tview.Flex, dismiss func()) *modalLayer {
+	return &modalLayer{Flex: inner, dismiss: dismiss}
+}
+
+func (m *modalLayer) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse,
+	setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	return func(action tview.MouseAction, event *tcell.EventMouse,
+		setFocus func(tview.Primitive)) (bool, tview.Primitive) {
+		if consumed, capture := m.Flex.MouseHandler()(action, event, setFocus); consumed {
+			return consumed, capture
+		}
+		if action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick {
+			if m.dismiss != nil {
+				m.dismiss()
+			}
+		}
+		// Swallowed either way: an overlay that leaks clicks is worse than none.
+		return true, nil
+	}
+}

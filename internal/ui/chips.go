@@ -259,7 +259,7 @@ func (c *chips) MouseHandler() func(action tview.MouseAction, event *tcell.Event
 		case tview.MouseLeftDown:
 			setFocus(c)
 			return true, nil
-		case tview.MouseLeftClick:
+		case tview.MouseLeftClick, tview.MouseLeftDoubleClick:
 			if index := c.chipAt(mouseX - x - c.labelWidth); index >= 0 {
 				c.cursor = index
 				c.toggle(index)

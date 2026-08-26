@@ -168,6 +168,20 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   directly - `root.SetRect(...)` then `root.Draw(screen)`. Going through
   `Application` races its own first frame, which produced an 80-column preview of
   a 120-column layout and made the layout look broken.
+- **An overlay must swallow what it does not use.** `Pages` keeps the page
+  underneath live, so a click the overlay ignores reaches the screen behind it -
+  and if it lands on a drop-down, that drop-down opens *behind* the overlay and
+  then captures every mouse event through `mouseCapturingPrimitive`. It looks
+  exactly like a freeze. Wrap an overlay in a layer whose MouseHandler consumes
+  anything its children did not.
+- **Handle `MouseLeftDoubleClick` or map it to a click.** tview coalesces two quick
+  clicks into it, and a widget that ignores it drops every other click a user makes.
+- **Test the interface through `Application`, not through its handlers.** Calling
+  MouseHandler directly passed while three mouse bugs shipped: the double-click
+  coalescing, the click-through and the focus all live in the Application's own
+  dispatch. `internal/ui/live_test.go` runs the real app on a SimulationScreen and
+  injects real events; `SetSize` before `Run` does not reach it, so the size has to
+  be delivered as an event.
 - **An overlay needs a backdrop, not a `Box`.** A plain `tview.Box` takes the
   focus when clicked and then answers nothing, so one click beside an overlay
   leaves the whole interface unresponsive. The margins around anything that opens
