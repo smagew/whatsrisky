@@ -21,7 +21,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	case len(args) == 0:
 		command = "ui"
 		rest = nil
-	case args[0] == "scan" || args[0] == "ui" || args[0] == "doctor" || args[0] == "profiles" || args[0] == "version" || args[0] == "perimeter":
+	case args[0] == "scan" || args[0] == "ui" || args[0] == "doctor" || args[0] == "profiles" || args[0] == "version" || args[0] == "perimeter" || args[0] == "models":
 		command, rest = args[0], args[1:]
 	case args[0] == "-h" || args[0] == "--help" || args[0] == "help":
 		usage(stdout)
@@ -36,6 +36,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		return cmdScan(rest, stdout, stderr)
 	case "perimeter":
 		return cmdPerimeter(rest, stdout, stderr)
+	case "models":
+		return cmdModels(rest, stdout, stderr)
 	case "doctor":
 		return cmdDoctor(rest, stdout, stderr)
 	case "profiles":

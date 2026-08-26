@@ -25,22 +25,29 @@
         <div class="hint" id="targetHint"></div>
       </div>
 
+      <!-- which passes run is set by ticking tools in the panel on the right -->
+
       <!-- folder options -->
-      <div data-for="folder">
-        <label class="check"><input type="checkbox" id="noai"> skip the AI review pass (it spends money)</label>
+      <div data-for="folder" hidden>
+        <div class="field">
+          <label for="exclude">Folders and files to skip</label>
+          <input type="text" id="exclude" placeholder="build, dist, *.min.js">
+          <div class="hint">Comma-separated, on top of the usual noise (node_modules, .git, …).</div>
+        </div>
       </div>
 
       <!-- network + perimeter options -->
       <div data-for="url domain" hidden>
         <label class="check"><input type="checkbox" id="authorized"> I am authorized to scan this target</label>
-        <div class="hint warn" id="authHint">Required. You are stating you may scan it — scanning something you do not control may be illegal.</div>
+        <div class="hint warn">Required. You are stating you may scan it — scanning something you do not control may be illegal.</div>
         <label class="check"><input type="checkbox" id="netactive"> allow attack-shaped traffic (--net-active)</label>
       </div>
-      <div data-for="url" hidden>
-        <label class="check"><input type="checkbox" id="nollm"> skip the LLM recon pass</label>
-      </div>
-      <div data-for="domain" hidden>
-        <label class="check"><input type="checkbox" id="crawl"> crawl each asset with katana (--crawl)</label>
+
+      <!-- model, shown when an AI pass is ticked -->
+      <div class="field" id="modelField" hidden>
+        <label for="model">AI model</label>
+        <input type="text" id="model" list="modelList" placeholder="blank = the backend's default">
+        <datalist id="modelList"></datalist>
       </div>
 
       <div class="field">

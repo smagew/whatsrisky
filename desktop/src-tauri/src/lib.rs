@@ -129,6 +129,19 @@ fn doctor(bin: Option<String>) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+// models returns the AI models per provider as JSON, for the model picker.
+#[tauri::command]
+fn models(bin: Option<String>) -> Result<String, String> {
+    let out = Command::new(binary(&bin))
+        .arg("models")
+        .output()
+        .map_err(|err| err.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
 // install_tool installs one named tool, streaming the package manager's output to
 // the window, then reports done. The engine owns which command to run.
 #[tauri::command]
@@ -187,7 +200,8 @@ pub fn run() {
             run_scan,
             open_report,
             doctor,
-            install_tool
+            install_tool,
+            models
         ])
         .run(tauri::generate_context!())
         .expect("error while running the whatsrisky window");
