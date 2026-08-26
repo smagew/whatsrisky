@@ -132,3 +132,37 @@ func (o *opener) MouseHandler() func(action tview.MouseAction, event *tcell.Even
 		return false, nil
 	})
 }
+
+// backdrop is the space around an overlay. It paints the ground, closes the
+// overlay when clicked, and never takes the keyboard - a plain tview.Box would
+// take focus on a click and then answer nothing, which is how one click beside a
+// list left the whole interface unresponsive.
+type backdropBox struct {
+	*tview.Box
+	dismiss func()
+}
+
+func backdrop(dismiss func()) *backdropBox {
+	box := tview.NewBox()
+	box.SetBackgroundColor(groundColor)
+	return &backdropBox{Box: box, dismiss: dismiss}
+}
+
+func (b *backdropBox) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse,
+	setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	return func(action tview.MouseAction, event *tcell.EventMouse,
+		_ func(tview.Primitive)) (bool, tview.Primitive) {
+		mouseX, mouseY := event.Position()
+		if !b.InRect(mouseX, mouseY) {
+			return false, nil
+		}
+		if action == tview.MouseLeftClick && b.dismiss != nil {
+			b.dismiss()
+		}
+		// Consumed either way, and focus is never taken.
+		return true, nil
+	}
+}
+
+// InputHandler is nil: the backdrop is not a place the keyboard can end up.
+func (b *backdropBox) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) { return nil }

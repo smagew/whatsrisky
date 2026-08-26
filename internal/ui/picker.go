@@ -42,21 +42,28 @@ func (u *UI) openPicker(title, about string, names []string, on map[string]bool)
 			if on[name] {
 				box, tag = tview.Escape("[x] "), passTag
 			}
-			label := tag + box + resetTag + name
-			list.AddItem(label, "", 0, func() {
-				// Selecting is toggling, and the cursor stays where it was so a
-				// run of folders can be ticked without hunting for the place.
-				at := list.GetCurrentItem()
-				on[names[at]] = !on[names[at]]
-				u.refresh()
-				fill(at)
-			})
+			list.AddItem(tag+box+resetTag+name, "", 0, nil)
 		}
 		if keep >= 0 && keep < len(names) {
 			list.SetCurrentItem(keep)
 		}
 	}
 	fill(0)
+
+	// The index comes from the handler, never from GetCurrentItem: on a click tview
+	// runs the clicked item's handler without moving currentItem first, so reading
+	// the cursor toggles whichever folder was ticked before - which is exactly how
+	// ticking one and clicking another un-ticked the first.
+	list.SetSelectedFunc(func(index int, _, _ string, _ rune) {
+		if index < 0 || index >= len(names) {
+			return
+		}
+		on[names[index]] = !on[names[index]]
+		u.refresh()
+		// The cursor stays where the tick happened, so a run of folders can be
+		// ticked without hunting for the place again.
+		fill(index)
+	})
 
 	// tview's list selects on enter and binds nothing to space. The help line
 	// promises space, so space has to work: it is the natural key for a tick.
@@ -77,7 +84,11 @@ func (u *UI) openPicker(title, about string, names []string, on map[string]bool)
 
 	width := minInt(u.width-8, 52)
 	height := minInt(u.height-4, len(names)+4)
-	u.pages.AddPage(pagePicker, centred(frame, width, maxInt(6, height)), true, true)
+	u.pages.AddPage(pagePicker, centred(frame, width, maxInt(6, height),
+		func() { u.closeOverlay(pagePicker) }), true, true)
+	// AddPage does not move the keyboard focus, so without this the arrows still
+	// go to the form behind the list and the list looks dead.
+	u.focus(list)
 }
 
 // tickedOr says what a set amounts to in one line, for the row that opens the

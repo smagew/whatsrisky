@@ -403,6 +403,137 @@ func TestTickingInThePickerReachesTheOptions(t *testing.T) {
 	}
 }
 
+func TestTickingOneThenClickingAnotherKeepsBoth(t *testing.T) {
+	// The defect: tview runs a clicked item's handler without moving currentItem
+	// first, so a handler that read the cursor toggled whichever folder had been
+	// ticked before. Ticking one and clicking another un-ticked the first.
+	root := t.TempDir()
+	for _, name := range []string{"alpha", "bravo", "charlie"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 40)
+	u.mustItem(t, "folders to skip").(*opener).open()
+	list := u.pickerList(t)
+
+	// Tick the first with the keyboard, then click the third.
+	list.SetCurrentItem(0)
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone),
+		func(tview.Primitive) {})
+	if got := strings.Join(u.collect().Exclude, ","); got != "alpha" {
+		t.Fatalf("after the first tick: %q", got)
+	}
+
+	x, y, _, _ := list.GetInnerRect()
+	click(list, x+2, y+2) // the third row
+	if got := strings.Join(u.collect().Exclude, ","); got != "alpha,charlie" {
+		t.Errorf("clicking the third folder gives %q, want alpha,charlie", got)
+	}
+
+	// And clicking it again un-ticks that one only.
+	click(list, x+2, y+2)
+	if got := strings.Join(u.collect().Exclude, ","); got != "alpha" {
+		t.Errorf("clicking it twice gives %q, want alpha", got)
+	}
+}
+
+func TestTheArrowsWalkTheList(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"alpha", "bravo", "charlie"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 40)
+	u.mustItem(t, "folders to skip").(*opener).open()
+	list := u.pickerList(t)
+
+	down := tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
+	list.InputHandler()(down, func(tview.Primitive) {})
+	list.InputHandler()(down, func(tview.Primitive) {})
+	if got := list.GetCurrentItem(); got != 2 {
+		t.Errorf("two downs put the cursor at %d, want 2", got)
+	}
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone), func(tview.Primitive) {})
+	if got := list.GetCurrentItem(); got != 1 {
+		t.Errorf("up puts the cursor at %d, want 1", got)
+	}
+	// And space ticks the one the cursor is on, not the one it started on.
+	list.InputHandler()(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone),
+		func(tview.Primitive) {})
+	if got := strings.Join(u.collect().Exclude, ","); got != "bravo" {
+		t.Errorf("space ticked %q, want bravo", got)
+	}
+}
+
+func TestOpeningTheListGivesItTheKeyboard(t *testing.T) {
+	// tview's Pages shows a page without moving focus, so the arrows went to the
+	// form behind the list and the list looked dead.
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "alpha"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 40)
+	u.app = tview.NewApplication().SetRoot(u.pages, true)
+
+	u.mustItem(t, "folders to skip").(*opener).open()
+	if got := u.app.GetFocus(); got != tview.Primitive(u.pickerList(t)) {
+		t.Errorf("the keyboard went to %T, not to the list", got)
+	}
+}
+
+func TestClickingBesideAnOverlayClosesItAndGivesTheKeyboardBack(t *testing.T) {
+	// The defect: the space around an overlay was a plain tview.Box, and a Box takes
+	// the focus when clicked while being able to do nothing with it. One click
+	// beside the list left the whole interface unresponsive to keys and to clicks.
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "alpha"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+	_ = screenOf(u, 120, 40)
+	u.app = tview.NewApplication().SetRoot(u.pages, true)
+
+	for _, overlay := range []struct {
+		name string
+		open func()
+	}{
+		{pagePicker, func() { u.mustItem(t, "folders to skip").(*opener).open() }},
+		{pageIgnore, u.toggleIgnore},
+		{pagePanel, u.togglePanel},
+	} {
+		overlay.open()
+		if u.currentPage() != overlay.name {
+			t.Fatalf("%s did not open", overlay.name)
+		}
+		// A click in the top-left corner is beside any centred overlay.
+		page := u.pages
+		page.SetRect(0, 0, 120, 40)
+		click(page, 0, 0)
+
+		if u.currentPage() == overlay.name {
+			t.Errorf("%s: clicking beside it did not close it", overlay.name)
+		}
+		if focused := u.app.GetFocus(); focused == nil {
+			t.Errorf("%s: nothing has the keyboard afterwards", overlay.name)
+		} else if _, isBox := focused.(*backdropBox); isBox {
+			t.Errorf("%s: the keyboard went to the backdrop", overlay.name)
+		}
+	}
+}
+
 func TestATickedFolderAndATypedOneAreOneList(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {

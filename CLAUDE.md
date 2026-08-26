@@ -168,6 +168,15 @@ after is how 0.3.1 reached main still calling itself 0.3.0.
   directly - `root.SetRect(...)` then `root.Draw(screen)`. Going through
   `Application` races its own first frame, which produced an 80-column preview of
   a 120-column layout and made the layout look broken.
+- **An overlay needs a backdrop, not a `Box`.** A plain `tview.Box` takes the
+  focus when clicked and then answers nothing, so one click beside an overlay
+  leaves the whole interface unresponsive. The margins around anything that opens
+  must dismiss it and must never take focus.
+- **`Pages.AddPage` does not move the keyboard.** Whatever opens has to ask for
+  focus, or its arrows go to the screen behind it.
+- **In a tview `List`, take the index from the handler, never from
+  `GetCurrentItem`.** A click runs the clicked item's handler before moving the
+  cursor, so reading the cursor acts on the previous selection.
 - **A row of chips is for a fixed few, a list is for however many.** The four
   scanners fit on a line and read well there. The project's own folders do not:
   the same widget reused for them stopped at what fitted, and then at a count of

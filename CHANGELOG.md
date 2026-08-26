@@ -71,6 +71,17 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Ticking a folder no longer un-ticks the one before it.** tview runs a clicked
+  item's handler without moving the cursor first, so a handler that read the cursor
+  toggled whichever folder had been ticked previously. The index comes from the
+  handler now.
+- **The arrows walk the list.** `Pages` shows a page without moving the keyboard
+  focus, so the arrows were still going to the form behind the overlay.
+- **Clicking beside an overlay closes it instead of freezing everything.** The
+  space around it was a plain `Box`, and a `Box` takes the focus when clicked while
+  being able to do nothing with it — one click beside the list left the interface
+  dead to keys and clicks alike. The backdrop now dismisses and never takes focus,
+  and it applies to all three overlays.
 - **The interface paints its own ground.** It was `tcell.ColorDefault`, which is
   the terminal's own background - so on a translucent terminal the desktop showed
   through the text and none of it could be read. At 209x33 that was 6,532 cells.

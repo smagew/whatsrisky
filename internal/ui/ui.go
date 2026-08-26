@@ -325,10 +325,10 @@ func (u *UI) onKey(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyEscape:
 		switch u.currentPage() {
 		case pageIgnore:
-			u.pages.RemovePage(pageIgnore)
+			u.closeOverlay(pageIgnore)
 			return nil
 		case pagePanel:
-			u.pages.RemovePage(pagePanel)
+			u.closeOverlay(pagePanel)
 			return nil
 		case pagePicker:
 			u.pages.RemovePage(pagePicker)
@@ -354,7 +354,7 @@ func (u *UI) onKey(event *tcell.EventKey) *tcell.EventKey {
 // toggleIgnore shows or hides the list of what is always skipped.
 func (u *UI) toggleIgnore() {
 	if u.currentPage() == pageIgnore {
-		u.pages.RemovePage(pageIgnore)
+		u.closeOverlay(pageIgnore)
 		return
 	}
 	view := textView()
@@ -363,7 +363,9 @@ func (u *UI) toggleIgnore() {
 		SetTitle(" what we do not look at — esc closes ").SetTitleColor(markColor).
 		SetTitleAlign(tview.AlignLeft)
 	view.SetText(ignoreText(u.width - 8))
-	u.pages.AddPage(pageIgnore, centred(view, u.width-8, minInt(u.height-2, 26)), true, true)
+	u.pages.AddPage(pageIgnore, centred(view, u.width-8, minInt(u.height-2, 26),
+		func() { u.closeOverlay(pageIgnore) }), true, true)
+	u.focus(view)
 }
 
 // togglePanel shows what the settings amount to when there is no room to keep it
@@ -371,7 +373,7 @@ func (u *UI) toggleIgnore() {
 // reason this screen is worth using.
 func (u *UI) togglePanel() {
 	if u.currentPage() == pagePanel {
-		u.pages.RemovePage(pagePanel)
+		u.closeOverlay(pagePanel)
 		return
 	}
 	width := minInt(u.width-4, 60)
@@ -381,7 +383,9 @@ func (u *UI) togglePanel() {
 		SetTitle(" what this will do — esc closes ").SetTitleColor(markColor).
 		SetTitleAlign(tview.AlignLeft)
 	view.SetText(u.panelText(u.collect(), width-2))
-	u.pages.AddPage(pagePanel, centred(view, width, minInt(u.height-2, 22)), true, true)
+	u.pages.AddPage(pagePanel, centred(view, width, minInt(u.height-2, 22),
+		func() { u.closeOverlay(pagePanel) }), true, true)
+	u.focus(view)
 }
 
 // start validates and launches a scan. A bad path stops here: the run screen must
@@ -451,6 +455,14 @@ func (u *UI) update(change func()) {
 	})
 }
 
+// focus hands the keyboard to a primitive. tview's Pages shows a page without
+// moving focus, so anything that opens has to ask for it.
+func (u *UI) focus(p tview.Primitive) {
+	if u.app != nil {
+		u.app.SetFocus(p)
+	}
+}
+
 func (u *UI) setNotice(text string) {
 	u.held = text
 	if text == "" {
@@ -511,25 +523,32 @@ func textView() *tview.TextView {
 }
 
 // centred puts a primitive in the middle of the screen without a modal's shadow.
-func centred(inner tview.Primitive, width, height int) tview.Primitive {
-	// Boxes rather than nil for the margins: a nil item paints nothing, so on a
-	// translucent terminal the space around an overlay stays see-through.
+func centred(inner tview.Primitive, width, height int, dismiss func()) tview.Primitive {
+	// Backdrops rather than nil for the margins: a nil item paints nothing, so on a
+	// translucent terminal the space around an overlay stays see-through - and a
+	// plain Box takes the focus when clicked while being unable to do anything with
+	// it, which left the whole interface dead to the keyboard and the mouse alike.
 	row := tview.NewFlex().
-		AddItem(ground(), 0, 1, false).
+		AddItem(backdrop(dismiss), 0, 1, false).
 		AddItem(inner, width, 0, true).
-		AddItem(ground(), 0, 1, false)
+		AddItem(backdrop(dismiss), 0, 1, false)
 	frame := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(ground(), 0, 1, false).
+		AddItem(backdrop(dismiss), 0, 1, false).
 		AddItem(row, height, 0, true).
-		AddItem(ground(), 0, 1, false)
+		AddItem(backdrop(dismiss), 0, 1, false)
 	frame.SetBackgroundColor(groundColor)
 	return frame
 }
 
-func ground() *tview.Box {
-	box := tview.NewBox()
-	box.SetBackgroundColor(groundColor)
-	return box
+// closeOverlay takes a page down and hands the keyboard back to the settings.
+// Anything that opens has to be able to close, by esc and by clicking away from
+// it: an overlay you cannot leave is worse than one that never opened.
+func (u *UI) closeOverlay(name string) {
+	u.pages.RemovePage(name)
+	if len(u.forms) > 0 {
+		u.focus(u.forms[0])
+	}
+	u.refresh()
 }
 
 func itoa(value int) string {
