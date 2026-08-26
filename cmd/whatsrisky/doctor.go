@@ -17,12 +17,33 @@ import (
 
 // toolStatus is the machine-readable form of a probe, for the desktop UI.
 type toolStatus struct {
-	Name    string `json:"name"`
-	Found   bool   `json:"found"`
-	Version string `json:"version"`
-	Covers  string `json:"covers"`
-	Hint    string `json:"hint"`
-	Install string `json:"install"` // the command to install it, or "" if we cannot
+	Name    string   `json:"name"`
+	Found   bool     `json:"found"`
+	Version string   `json:"version"`
+	Covers  string   `json:"covers"`
+	Hint    string   `json:"hint"`
+	Install string   `json:"install"` // the command to install it, or "" if we cannot
+	Modes   []string `json:"modes"`   // which UI tabs use it: folder / address / domain
+}
+
+// modesFor says which UI tabs a tool belongs to, from the engine's own
+// vocabularies, so the desktop never hardcodes a grouping that could drift. A tool
+// used by more than one tab lists them all.
+func modesFor(name string) []string {
+	var modes []string
+	if contains(scan.AllTools, name) {
+		modes = append(modes, "folder")
+	}
+	if contains(scan.NetTools, name) {
+		modes = append(modes, "address")
+	}
+	// The domain tab runs the perimeter default passes plus discovery and extras.
+	domain := append(append([]string(nil), perimeter.DefaultPasses...), perimeter.Tools...)
+	domain = append(domain, perimeter.ScreenshotTool, perimeter.CrawlTool)
+	if contains(domain, name) {
+		modes = append(modes, "domain")
+	}
+	return modes
 }
 
 // doctorJSON prints the tool status as a JSON array, the surface the desktop reads
@@ -34,6 +55,7 @@ func doctorJSON(probes []probe, stdout *os.File) int {
 			Name: entry.name, Found: entry.found, Version: entry.version,
 			Covers: entry.covers, Hint: entry.hint,
 			Install: installCommand(entry.name, entry.found),
+			Modes:   modesFor(entry.name),
 		})
 	}
 	body, err := json.MarshalIndent(out, "", "  ")

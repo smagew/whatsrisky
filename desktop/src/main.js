@@ -79,6 +79,7 @@ function setMode(mode) {
   els.targetLabel.textContent = MODES[mode].label;
   els.target.placeholder = MODES[mode].placeholder;
   els.targetHint.textContent = MODES[mode].hint;
+  renderTools();
   refresh();
 }
 
@@ -95,8 +96,14 @@ async function loadDoctor() {
 }
 
 function renderTools() {
+  if (!inventory.length) return; // still loading; loadDoctor renders when ready
   els.tools.textContent = "";
-  inventory.forEach((tool) => {
+  const forHere = inventory.filter((tool) => (tool.modes || []).includes(state.mode));
+  if (!forHere.length) {
+    els.tools.append(el("div", "covers", "no external tools for this mode"));
+    return;
+  }
+  forHere.forEach((tool) => {
     const row = document.createElement("div");
     row.className = "tool";
     const dot = document.createElement("span");

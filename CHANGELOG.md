@@ -20,7 +20,10 @@ All notable changes to this project are documented here. This project follows
   **Install** button for each missing tool that runs the package manager for you
   (`doctor --install-tool`). During a scan it shows **per-tool progress** — which
   passes will run, which is running, and how long each took — parsed from a new
-  `scan --events` NDJSON stream. Not launched here (no display); the Rust shell
+  `scan --events` NDJSON stream. The tool inventory is filtered to the active tab —
+  Folder shows the source scanners, Address the network passes, Domain the
+  discovery and screenshot tools — from a `modes` field `doctor --json` now
+  reports, so the grouping comes from the engine, not the window. Not launched here (no display); the Rust shell
   compiles against Tauri v2 and the frontend is plain checked JS. Native folder
   picker and embedded report view are the next steps.
 
