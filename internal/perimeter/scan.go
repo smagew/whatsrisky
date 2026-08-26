@@ -40,6 +40,7 @@ func Scan(cfg Config, assets []Asset, notes []string) model.Report {
 		ScanID:      slug(cfg.Domain) + "-" + stamp.Format("20060102-150405"),
 		StartedAt:   stamp.Format("2006-01-02 15:04:05"),
 		Status:      model.StatusRunning,
+		Assets:      assets,
 	}
 
 	// The inventory is a first-class part of the result, so it is a tool of its own

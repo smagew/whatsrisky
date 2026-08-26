@@ -103,6 +103,7 @@ type reportJSON struct {
 	ActiveFindings   int               `json:"active_findings"`
 	Tools            []toolJSON        `json:"tools"`
 	Findings         []findingJSON     `json:"findings"`
+	Assets           []model.Asset     `json:"assets"`
 }
 
 func optional(value string) *string {
@@ -190,7 +191,17 @@ func Document(report model.Report) any {
 		Counts: counts, TotalFindings: len(report.Findings),
 		ActiveFindings: len(report.ActiveFindings()),
 		Tools:          tools, Findings: findings,
+		Assets: emptyAssets(report.Assets),
 	}
+}
+
+// emptyAssets keeps the field a list rather than null, the same courtesy the other
+// slices get, so a consumer never has to special-case a filesystem scan.
+func emptyAssets(assets []model.Asset) []model.Asset {
+	if assets == nil {
+		return []model.Asset{}
+	}
+	return assets
 }
 
 // Marshal renders the contract, indented as the reference does.

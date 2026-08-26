@@ -8,7 +8,7 @@ import (
 
 // SchemaVersion versions the JSON report - the contract other tools read. It
 // moves on its own schedule, independently of the package version.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // Report-level status. A scan is written from its first second, so a reader has
 // to be able to tell an unfinished report from a finished one.
@@ -70,6 +70,25 @@ type Report struct {
 	Comparison    *Comparison
 	Tools         []ToolResult
 	Findings      []Finding
+
+	// Assets is the estate a perimeter scan mapped: the live and dead hosts under a
+	// domain. Empty for a single-target or filesystem scan. Added in schema 4.
+	Assets []Asset
+}
+
+// Asset is one host a perimeter scan discovered: whether it resolved, whether it
+// answered HTTP, and — when it did — the URL that was scanned and the stack it
+// advertised. It is part of the JSON contract, so it lives here rather than in the
+// perimeter package.
+type Asset struct {
+	Host       string   `json:"host"`
+	IPs        []string `json:"ips,omitempty"`
+	URL        string   `json:"url,omitempty"`
+	Status     int      `json:"status,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Tech       []string `json:"tech,omitempty"`
+	Alive      bool     `json:"alive"`
+	Screenshot string   `json:"screenshot,omitempty"` // set by a later gowitness pass
 }
 
 // ActiveFindings are the ones that still count.

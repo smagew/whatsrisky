@@ -7,6 +7,14 @@ All notable changes to this project are documented here. This project follows
 
 ## [0.6.0] - 2026-08-26
 
+### Changed
+
+- **`model.SchemaVersion` is 4.** The JSON report gained an `assets` array — the
+  estate a perimeter scan mapped, each host with whether it resolved, whether it
+  answered HTTP, its URL, status and stack. It is `[]` for a single-target or
+  filesystem scan, so an existing consumer that ignores the field is unaffected.
+  `schema/report.schema.json` and the Markdown report carry it too.
+
 ### Added
 
 - **Perimeter mode: scan a whole estate, not one address.**

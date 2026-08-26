@@ -15,7 +15,7 @@
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 3
+      "const": 4
     },
     "generator": {
       "type": "object",
@@ -281,7 +281,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Who runs the model: anthropic, openai, … Null for local scanners."
+                "description": "Who runs the model: anthropic, openai, \u2026 Null for local scanners."
               },
               "model": {
                 "type": [
@@ -429,6 +429,50 @@
           "type": "integer",
           "minimum": 0,
           "description": "Findings tracked through moved code, so a refactor is not reported as a fix plus a regression."
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "description": "The estate a perimeter scan mapped: hosts under a domain, live and dead. Empty for a single-target or filesystem scan.",
+      "items": {
+        "type": "object",
+        "required": [
+          "host",
+          "alive"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "ips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tech": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "alive": {
+            "type": "boolean"
+          },
+          "screenshot": {
+            "type": "string",
+            "description": "Relative path to a screenshot of the asset, when a gowitness pass ran."
+          }
         }
       }
     }

@@ -60,6 +60,30 @@ func RenderMarkdown(report model.Report) string {
 	}
 	line("")
 
+	if len(report.Assets) > 0 {
+		alive := 0
+		for _, asset := range report.Assets {
+			if asset.Alive {
+				alive++
+			}
+		}
+		line("## Estate — %d asset(s), %d alive", len(report.Assets), alive)
+		line("")
+		line("| Host | Alive | Status | URL | Stack |")
+		line("| --- | --- | --- | --- | --- |")
+		for _, asset := range report.Assets {
+			mark, status, url := "no", "", ""
+			if asset.Alive {
+				mark = "yes"
+				status = fmt.Sprintf("%d", asset.Status)
+				url = asset.URL
+			}
+			line("| %s | %s | %s | %s | %s |",
+				asset.Host, mark, status, url, strings.Join(asset.Tech, ", "))
+		}
+	}
+	line("")
+
 	if comparison := report.Comparison; comparison != nil {
 		line("## Since %s", orDash(comparison.BaselineScanID))
 		line("")

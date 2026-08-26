@@ -56,7 +56,7 @@ func TestTheJSONContractHasTheExpectedShape(t *testing.T) {
 		"started_at", "finished_at", "duration_s", "git_commit", "git_branch", "diff_range",
 		"scope_paths", "excludes", "excluded_findings", "comparison", "counts_by_category",
 		"counts_by_source", "counts_by_status", "risk_score", "verdict", "counts",
-		"total_findings", "active_findings", "tools", "findings",
+		"total_findings", "active_findings", "tools", "findings", "assets",
 	} {
 		if _, ok := document[key]; !ok {
 			t.Errorf("the contract is missing %q", key)
@@ -213,5 +213,40 @@ func TestMarkdownStatesWhatChangedAndWhatWasMissed(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("the Markdown is missing %q", want)
 		}
+	}
+}
+
+func TestTheContractCarriesTheEstate(t *testing.T) {
+	// A perimeter report's assets have to reach the JSON, or another tool cannot see
+	// the estate that was mapped. Schema 4 added them.
+	report := sampleReport()
+	report.Assets = []model.Asset{
+		{Host: "www.example.com", URL: "https://www.example.com", Status: 200,
+			Tech: []string{"nginx"}, Alive: true},
+		{Host: "dead.example.com", Alive: false},
+	}
+	body, err := Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		SchemaVersion int `json:"schema_version"`
+		Assets        []struct {
+			Host  string `json:"host"`
+			URL   string `json:"url"`
+			Alive bool   `json:"alive"`
+		} `json:"assets"`
+	}
+	if err := json.Unmarshal(body, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.SchemaVersion != 4 {
+		t.Errorf("schema version %d, want 4 now that assets exist", document.SchemaVersion)
+	}
+	if len(document.Assets) != 2 {
+		t.Fatalf("assets in contract: %d", len(document.Assets))
+	}
+	if document.Assets[0].Host != "www.example.com" || !document.Assets[0].Alive {
+		t.Errorf("first asset: %+v", document.Assets[0])
 	}
 }
