@@ -83,6 +83,18 @@ Three passes, each on the same severity scale as the code scan:
 - **llm-recon** has a model read the surface and point out where to look by hand.
   Its findings are leads to verify, not confirmed holes.
 
+Two heavier passes are opt-in with `--passes` (not in the default set):
+
+- **zap** runs [OWASP ZAP](https://www.zaproxy.org/) — the passive baseline by
+  default, the active full scan with `--net-active`.
+- **ffuf** brute-forces paths to find endpoints nothing links to. Active by nature,
+  so it needs `--net-active` and `--wordlist PATH`:
+
+```bash
+whatsrisky https://staging.example.com --i-am-authorized \
+  --passes zap,ffuf --net-active --wordlist ~/lists/common.txt
+```
+
 `--i-am-authorized` is required, and it is not decoration: you are stating you may
 scan that address. Scanning a host you do not control may be illegal. The target
 and the affirmation are recorded in the report.

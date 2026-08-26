@@ -44,6 +44,7 @@ type Config struct {
 	SurfaceTimeout time.Duration
 	NucleiTimeout  time.Duration
 	NetActive      bool
+	Wordlist       string // path list for ffuf content discovery
 }
 
 // Outcome is what a scan produced, plus the things a report has to say about how
@@ -160,6 +161,10 @@ func New(name string, config Config) (Runner, error) {
 		return NewTestSSL(config), nil
 	case "nuclei":
 		return NewNuclei(config), nil
+	case "zap":
+		return NewZAP(config), nil
+	case "ffuf":
+		return NewFfuf(config), nil
 	case "llm-recon":
 		return NewLLMRecon(config)
 	}

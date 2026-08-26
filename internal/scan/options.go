@@ -21,10 +21,10 @@ var (
 	// NetTools scan a live address rather than a folder. They are a separate set:
 	// nuclei against a URL and semgrep against a URL are not the same request, and
 	// nothing good comes of pretending one vocabulary covers both.
-	NetTools = []string{"surface", "testssl", "nuclei", "llm-recon"}
+	NetTools = []string{"surface", "testssl", "nuclei", "zap", "ffuf", "llm-recon"}
 	// DefaultNetTools is every network pass. The LLM recon spends money and is
 	// opt-out with --no-llm, the same shape as the filesystem ai pass.
-	DefaultNetTools = []string{"surface", "testssl", "nuclei", "llm-recon"}
+	DefaultNetTools = []string{"surface", "testssl", "nuclei", "zap", "ffuf", "llm-recon"}
 	DefaultTools    = []string{"semgrep", "trivy", "gitleaks", "ai"}
 
 	// ToolsWithoutAI is the default set with the review pass taken out. It exists
@@ -52,6 +52,8 @@ var (
 		"surface":   "TLS, headers, cookies, robots.txt — what the server volunteers",
 		"nuclei":    "Known CVEs, misconfig and exposures by template",
 		"testssl":   "Deep TLS: ciphers, protocols, cert chain, named TLS CVEs",
+		"zap":       "OWASP ZAP: passive baseline, or active full scan with --net-active",
+		"ffuf":      "Content discovery: brute-forces paths (active; needs --net-active)",
 		"llm-recon": "LLM reading of the surface for weak spots to check by hand",
 	}
 )
@@ -96,9 +98,11 @@ type Options struct {
 	// control is the caller's responsibility, stated, not assumed.
 	Authorized bool `json:"-"`
 	// NetActive allows passes that send attack-shaped traffic - nuclei's fuzzing
-	// and injection templates. Off by default: the rest only reads what the server
-	// already serves.
+	// and injection templates, ZAP's active scan, ffuf's path brute-force. Off by
+	// default: the rest only reads what the server already serves.
 	NetActive bool `json:"net_active,omitempty"`
+	// Wordlist is the path list ffuf tries when discovering endpoints.
+	Wordlist string `json:"wordlist,omitempty"`
 }
 
 // IsNetwork reports whether this is a scan of a live address rather than a folder.
@@ -229,6 +233,9 @@ func (o Options) networkCommandLine() string {
 	}
 	if o.NetActive {
 		add("--net-active")
+	}
+	if o.HasTool("ffuf") && o.Wordlist != "" {
+		add("--wordlist", o.Wordlist)
 	}
 	if !sameSet(o.Formats, FormatChoices) {
 		add("--format", strings.Join(o.Formats, ","))

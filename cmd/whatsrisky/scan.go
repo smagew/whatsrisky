@@ -66,7 +66,8 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 		authorized   = flags.Bool("i-am-authorized", false, "confirm you may scan the target address (required for a network scan)")
 		netActive    = flags.Bool("net-active", false, "allow passes that send attack-shaped traffic (off by default)")
 		noLLM        = flags.Bool("no-llm", false, "drop the LLM recon pass from a network scan")
-		passes       = flags.String("passes", "", "comma list of network passes (default surface,nuclei,llm-recon)")
+		passes       = flags.String("passes", "", "comma list of network passes (default surface,testssl,nuclei,llm-recon)")
+		wordlist     = flags.String("wordlist", "", "path list for ffuf content discovery")
 	)
 	var excludes, semgrepConfigs stringList
 	flags.Var(&excludes, "exclude", "directory, path or glob to skip (repeatable)")
@@ -165,6 +166,7 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 	setString(&options.FailOn, *failOn)
 	setString(&options.Baseline, *baseline)
 	setString(&options.WorkDir, *workDir)
+	setString(&options.Wordlist, *wordlist)
 	setInt(&options.AITimeout, *aiTimeout)
 	setInt(&options.AIMaxFindings, *aiMax)
 	setInt(&options.AIContextBytes, *aiContext)

@@ -24,6 +24,14 @@ All notable changes to this project are documented here. This project follows
   - **nuclei** — ProjectDiscovery's template scanner for known CVEs, misconfig and
     exposures. By default it excludes the templates that send payloads (fuzzing,
     injection); `--net-active` includes them, and the report says which ran.
+  - **zap** — OWASP ZAP through its packaged scan scripts. The baseline spiders the
+    site and reports what its passive rules see (it crawls but sends no attacks) and
+    is the default when zap is chosen; `--net-active` runs the full active scan. Not
+    in the default set — it is a heavyweight, asked for with `--passes`.
+  - **ffuf** — content discovery: it brute-forces paths from a wordlist, which is how
+    a forgotten admin panel turns up. Brute-force is attack traffic, so it runs only
+    with `--net-active` and a `--wordlist`; without either it reports itself as a
+    coverage gap with the reason. Opt-in via `--passes`.
   - **llm-recon** — a language model reads what the site serves and reasons about
     where to look by hand. Its findings are leads to verify, not confirmed holes,
     and it says so. Opt-in and paid, like the code AI pass; `--no-llm` drops it.

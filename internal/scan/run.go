@@ -185,6 +185,7 @@ func Run(options Options, handler Handler) (Outcome, error) {
 		SurfaceTimeout:  seconds(minInt(options.Timeout, 60)),
 		NucleiTimeout:   seconds(options.Timeout),
 		NetActive:       options.NetActive,
+		Wordlist:        options.Wordlist,
 	}
 
 	started := time.Now()
