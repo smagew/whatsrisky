@@ -9,6 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/smagew/whatsrisky/internal/ai"
 	"github.com/smagew/whatsrisky/internal/config"
 	"github.com/smagew/whatsrisky/internal/exclude"
 	"github.com/smagew/whatsrisky/internal/model"
@@ -215,7 +216,7 @@ func TestEverySettingIsOnTheScreenAtOnce(t *testing.T) {
 		"semgrep", "trivy", "gitleaks", "ai",
 		"who reviews", "model", "what it reads",
 		"html", "md", "json", "save reports in", "open when done",
-		"your folders and files", "the usual noise",
+		"anything else", "the usual noise",
 		"hide anything below", "fail the build at",
 		"semgrep rules", "trivy passes", "gitleaks looks at", "scanners at once",
 		"no network", "compare with last", "save these settings as",
@@ -267,6 +268,70 @@ func TestThePanelComesBackOnTheNarrowScreen(t *testing.T) {
 
 // --- 3, 4: what we do not look at -----------------------------------
 
+func TestTheProjectsOwnFoldersAreTickedNotTyped(t *testing.T) {
+	// Typing the name of a folder you are looking at is dictation, not a choice.
+	root := t.TempDir()
+	for _, name := range []string{"src", "docs", "node_modules", "cmd"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+	view := screenOf(u, 160, 44)
+
+	if !strings.Contains(view, "folders here") {
+		t.Fatalf("the project's folders are not offered:\n%s", view)
+	}
+	for _, name := range []string{"src", "docs", "cmd"} {
+		if !strings.Contains(view, name) {
+			t.Errorf("%q is a folder of this project and is not offered", name)
+		}
+	}
+	// A folder already in the usual noise is not offered twice.
+	if strings.Contains(lineWith(view, "folders here"), "node_modules") {
+		t.Error("node_modules is in the usual noise and should not be a chip too")
+	}
+	row := u.mustItem(t, "folders here").(*chips)
+	row.toggle(indexIn(row.names, "docs"))
+	if got := strings.Join(u.collect().Exclude, ","); got != "docs" {
+		t.Errorf("ticking a folder did not reach the options: %q", got)
+	}
+	if got := u.collect().Normalized().CommandLine(); !strings.Contains(got, "--exclude docs") {
+		t.Errorf("and not the command either: %s", got)
+	}
+}
+
+func TestATickedFolderAndATypedOneAreOneList(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	options := scan.NewOptions()
+	options.Path = root
+	u := newUI(t, options, "")
+	_ = screenOf(u, 160, 44)
+
+	u.mustItem(t, "folders here").(*chips).toggle(0)
+	u.values.ignorePaths = "docs, *.min.js"
+
+	// "docs" is both ticked and typed, and must appear once.
+	got := u.collect().Exclude
+	count := 0
+	for _, name := range got {
+		if name == "docs" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("docs appears %d times in %v", count, got)
+	}
+	if strings.Join(got, ",") != "docs,*.min.js" {
+		t.Errorf("the two lists did not merge: %v", got)
+	}
+}
+
 func TestTheSkippedListIsReadableAndComesFromTheCode(t *testing.T) {
 	options := scan.NewOptions()
 	options.Path = t.TempDir()
@@ -309,6 +374,54 @@ func TestNoJargonOnTheScreen(t *testing.T) {
 				t.Errorf("the screen says %q:\n%s", word, view)
 			}
 		}
+	}
+}
+
+func TestTheModelIsAListYouPickFrom(t *testing.T) {
+	// Typing a model id from memory is not a choice. The list is what the provider
+	// is usually asked for; an id we have never heard of still goes through,
+	// because their catalogue moves faster than ours.
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	u := newUI(t, options, "")
+	view := screenOf(u, 160, 44)
+
+	if !strings.Contains(view, "opus") || !strings.Contains(view, "sonnet") {
+		t.Errorf("the models for claude-cli are not offered:\n%s", lineWith(view, "model"))
+	}
+
+	if _, ok := u.mustItem(t, "model").(*tview.InputField); !ok {
+		t.Fatal("the model is not an input field")
+	}
+	models := ai.Models("claude-cli")
+	if got := suggest(models, ""); strings.Join(got, ",") != "opus,sonnet,haiku" {
+		t.Errorf("an empty field should offer every model, got %v", got)
+	}
+	if got := suggest(models, "son"); strings.Join(got, ",") != "sonnet" {
+		t.Errorf("typing should narrow the list, got %v", got)
+	}
+	if got := suggest(models, "SON"); strings.Join(got, ",") != "sonnet" {
+		t.Errorf("the match should not care about case, got %v", got)
+	}
+
+	// A model nobody listed is still accepted.
+	u.values.aiModel = "claude-next-9"
+	if got := u.collect().Model; got != "claude-next-9" {
+		t.Errorf("an unlisted model was refused: %q", got)
+	}
+}
+
+func TestTheModelsFollowTheProvider(t *testing.T) {
+	options := scan.NewOptions()
+	options.Path = t.TempDir()
+	options.AIProvider = "openai"
+	u := newUI(t, options, "")
+	view := screenOf(u, 160, 44)
+	if !strings.Contains(view, "gpt-5") {
+		t.Errorf("openai's models are not offered:\n%s", lineWith(view, "model"))
+	}
+	if strings.Contains(lineWith(view, "model"), "opus") {
+		t.Error("claude's models are offered for openai")
 	}
 }
 
@@ -704,7 +817,7 @@ func TestEverySettingReachesTheOptions(t *testing.T) {
 		{"open when done", got.OpenReport, got.OpenReport},
 		{"hide anything below", got.MinSeverity == "HIGH", got.MinSeverity},
 		{"fail the build at", got.FailOn == "CRITICAL", got.FailOn},
-		{"your folders", strings.Join(got.Exclude, ",") == "vendor,dist", got.Exclude},
+		{"anything else", strings.Join(got.Exclude, ",") == "vendor,dist", got.Exclude},
 		{"the usual noise", !got.UseDefaultExcludes, got.UseDefaultExcludes},
 		{"semgrep rules", strings.Join(got.SemgrepConfigs, ",") == "p/ci,p/golang", got.SemgrepConfigs},
 		{"trivy passes", got.TrivyScanners == "vuln", got.TrivyScanners},

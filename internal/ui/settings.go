@@ -2,10 +2,12 @@ package ui
 
 import (
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/smagew/whatsrisky/internal/ai"
 	"github.com/smagew/whatsrisky/internal/config"
+	"github.com/smagew/whatsrisky/internal/exclude"
 	"github.com/smagew/whatsrisky/internal/runner"
 	"github.com/smagew/whatsrisky/internal/scan"
 )
@@ -137,3 +139,42 @@ func firstNonEmptyString(values ...string) string {
 	}
 	return ""
 }
+
+// projectDirs is the folders of the project as it stands, so they can be ticked
+// instead of typed. Read at layout time: one directory listing, and it is the
+// folder the user is looking at.
+//
+// Hidden folders are included - .github and .claude are exactly the kind of thing
+// someone wants out of a scan - but the ones we always skip are not, because they
+// are already covered by the switch beside this.
+func (u *UI) projectDirs() []string {
+	path := strings.TrimSpace(u.values.path)
+	if path == "" {
+		return nil
+	}
+	if path == u.dirsFor {
+		return u.dirs
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		u.dirsFor, u.dirs = path, nil
+		return nil
+	}
+	var out []string
+	for _, entry := range entries {
+		if !entry.IsDir() || exclude.Path(entry.Name(), exclude.Defaults) {
+			continue
+		}
+		out = append(out, entry.Name())
+		if len(out) == maxDirChips {
+			break
+		}
+	}
+	sort.Strings(out)
+	u.dirsFor, u.dirs = path, out
+	return out
+}
+
+// maxDirChips is where the row stops. A project with sixty top-level folders is
+// not helped by sixty chips, and the field beside them takes a name directly.
+const maxDirChips = 10

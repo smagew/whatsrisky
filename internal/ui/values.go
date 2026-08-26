@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
@@ -25,7 +26,8 @@ type values struct {
 	openReport  bool
 	minSeverity string
 	failOn      string
-	ignorePaths string
+	ignoreDirs  map[string]bool // folders of this project, ticked to be skipped
+	ignorePaths string          // anything else, typed
 	ignoreNoise bool
 	semgrep     string
 	trivy       string
@@ -49,6 +51,7 @@ func newValues(options scan.Options) *values {
 		openReport:  options.OpenReport,
 		minSeverity: options.MinSeverity,
 		failOn:      options.FailOn,
+		ignoreDirs:  map[string]bool{},
 		ignorePaths: commaList(options.Exclude),
 		ignoreNoise: options.UseDefaultExcludes,
 		semgrep:     commaList(options.SemgrepConfigs),
@@ -76,7 +79,10 @@ func (v *values) apply(base scan.Options) scan.Options {
 	options.OpenReport = v.openReport
 	options.MinSeverity = v.minSeverity
 	options.FailOn = v.failOn
-	options.Exclude = splitCommas(v.ignorePaths)
+	// The ticked folders and the typed ones are one list to the scanners, and a
+	// folder must not appear twice because it was both.
+	options.Exclude = merge(chosen(sortedKeys(v.ignoreDirs), v.ignoreDirs),
+		splitCommas(v.ignorePaths))
 	options.UseDefaultExcludes = v.ignoreNoise
 	options.GitleaksMode = v.gitleaks
 	options.Offline = v.offline
@@ -91,6 +97,31 @@ func (v *values) apply(base scan.Options) scan.Options {
 		options.Jobs = jobs
 	}
 	return options
+}
+
+// merge keeps the first mention of each name and drops the repeats.
+func merge(lists ...[]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range lists {
+		for _, name := range list {
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func sortedKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // setOf turns a chosen list into a lookup over every possible value, so a widget

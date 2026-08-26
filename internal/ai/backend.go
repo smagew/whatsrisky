@@ -56,6 +56,20 @@ var Vendor = map[string]string{
 // Providers is every backend name, in the order they are offered.
 var Providers = []string{"claude-cli", "openai"}
 
+// Models is what each provider is usually asked for, most capable first. It is a
+// suggestion, not a restriction: a model id we have never heard of is still passed
+// through, because the provider's catalogue moves faster than this list. It lives
+// here rather than in the interface so both front ends offer the same names.
+func Models(provider string) []string {
+	switch provider {
+	case "claude-cli":
+		return []string{"opus", "sonnet", "haiku"}
+	case "openai":
+		return []string{"gpt-5", "gpt-5-mini", "o4-mini"}
+	}
+	return nil
+}
+
 // New builds a backend. cwd is the project being scanned; workDir is where raw
 // transcripts are kept.
 func New(provider, cwd, workDir string) (Backend, error) {

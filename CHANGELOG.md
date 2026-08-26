@@ -27,6 +27,16 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **The folders of the project are ticked, not typed.** The section lists what is
+  actually in the project folder — `.github`, `cmd`, `docs`, `internal` — and
+  ticking one skips it. Typing the name of a folder you are looking at is
+  dictation, not a choice. The ones already in the usual noise are not offered
+  twice, and a folder that is both ticked and typed appears once.
+- **The model is a list.** `ai.Models` names what each provider is usually asked
+  for — opus, sonnet, haiku for the CLI; gpt-5 and friends for the API — and the
+  field completes from it. An id we have never heard of still goes through: a
+  provider's catalogue moves faster than our list, and a field that refuses a
+  valid model is worse than one that only suggests.
 - **The scanners and the output formats are each a row of chips** —
   `[x] semgrep [x] trivy [x] gitleaks [ ] ai` — instead of one checkbox per row.
   tview has no such item, so this is the one widget written by hand here: it

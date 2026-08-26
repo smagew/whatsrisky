@@ -46,6 +46,9 @@ type UI struct {
 	probes  []probeRow
 	probing bool
 
+	dirs    []string // the project's own folders, for the chips
+	dirsFor string   // the path they were read from
+
 	progress     *progress.Model
 	toolMessages map[string]string
 	log          []string

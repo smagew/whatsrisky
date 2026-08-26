@@ -73,7 +73,7 @@ func (u *UI) fields() []field {
 				func(_ string, index int) { v.aiProvider = at(ai.Providers, index) })
 		}},
 		{"AI review", func(f *tview.Form, w int) {
-			input(f, 22, "model", v.aiModel, "blank = the default", w, func(text string) { v.aiModel = text })
+			u.modelField(f, w)
 		}},
 		{"AI review", func(f *tview.Form, w int) {
 			modes := []string{"full", "review", "both"}
@@ -94,7 +94,16 @@ func (u *UI) fields() []field {
 		}},
 
 		{"What we do not look at", func(f *tview.Form, w int) {
-			input(f, 34, "your folders and files", v.ignorePaths, "build, *.min.js", w, func(text string) { v.ignorePaths = text })
+			// The folders that are actually there, to tick. Typing the name of a
+			// folder you are looking at is not a choice, it is dictation.
+			if dirs := u.projectDirs(); len(dirs) > 0 {
+				f.AddFormItem(newChips("folders here", dirs, v.ignoreDirs,
+					func(string, bool) { u.refresh() }))
+			}
+		}},
+		{"What we do not look at", func(f *tview.Form, w int) {
+			input(f, 34, "anything else", v.ignorePaths, "*.min.js, docs/generated", w,
+				func(text string) { v.ignorePaths = text })
 		}},
 		{"What we do not look at", func(f *tview.Form, w int) {
 			u.yesNo(f, "the usual noise", &v.ignoreNoise)
@@ -152,6 +161,49 @@ func (u *UI) yesNo(form *tview.Form, label string, target *bool) {
 
 // newForm lays the fields out. Sections are headings in a single column, not
 // pages: you came to change one setting, not to walk through all of them.
+// modelField offers the models a provider is usually asked for, and still accepts
+// an id we have never heard of - a provider's catalogue moves faster than our
+// list, and a field that refuses a valid model is worse than one that suggests.
+func (u *UI) modelField(form *tview.Form, room int) {
+	models := ai.Models(u.values.aiProvider)
+	// The example has to fit the field, or the list of models is itself truncated.
+	example := "the default"
+	if len(models) > 0 {
+		example = strings.Join(models, " · ")
+	}
+	input(form, 34, "model", u.values.aiModel, example, room,
+		func(text string) { u.values.aiModel = text })
+
+	item := form.GetFormItem(form.GetFormItemCount() - 1)
+	field, ok := item.(*tview.InputField)
+	if !ok {
+		return
+	}
+	field.SetAutocompleteFunc(func(current string) []string { return suggest(models, current) })
+	field.SetAutocompletedFunc(func(text string, _, source int) bool {
+		if source == tview.AutocompletedNavigate {
+			return false
+		}
+		field.SetText(text)
+		u.values.aiModel = text
+		u.refresh()
+		return true
+	})
+}
+
+// suggest narrows a list to what has been typed, and offers all of it while
+// nothing has. Named rather than inline so it can be tested: tview keeps no getter
+// for the function it was given.
+func suggest(models []string, current string) []string {
+	var out []string
+	for _, model := range models {
+		if current == "" || strings.HasPrefix(model, strings.ToLower(current)) {
+			out = append(out, model)
+		}
+	}
+	return out
+}
+
 // input is a text field with an example in it while it is empty.
 func input(form *tview.Form, want int, label, value, example string, room int, set func(string)) {
 	form.AddInputField(label, value, fieldWidth(room, want), nil, set)
