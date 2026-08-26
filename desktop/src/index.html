@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>whatsrisky</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <span class="name">whatsrisky</span>
+    <span class="sub">what's risky — a folder, an address, or a whole domain</span>
+  </header>
+  <main>
+    <section>
+      <div class="modes" id="modes">
+        <button data-mode="folder" aria-pressed="true" type="button">Folder</button>
+        <button data-mode="url" aria-pressed="false" type="button">Address</button>
+        <button data-mode="domain" aria-pressed="false" type="button">Domain</button>
+      </div>
+
+      <div class="field">
+        <label id="targetLabel" for="target">Project folder</label>
+        <input type="text" id="target" placeholder="/path/to/project">
+        <div class="hint" id="targetHint"></div>
+      </div>
+
+      <!-- folder options -->
+      <div data-for="folder">
+        <label class="check"><input type="checkbox" id="noai"> skip the AI review pass (it spends money)</label>
+      </div>
+
+      <!-- network + perimeter options -->
+      <div data-for="url domain" hidden>
+        <label class="check"><input type="checkbox" id="authorized"> I am authorized to scan this target</label>
+        <div class="hint warn" id="authHint">Required. You are stating you may scan it — scanning something you do not control may be illegal.</div>
+        <label class="check"><input type="checkbox" id="netactive"> allow attack-shaped traffic (--net-active)</label>
+      </div>
+      <div data-for="url" hidden>
+        <label class="check"><input type="checkbox" id="nollm"> skip the LLM recon pass</label>
+      </div>
+      <div data-for="domain" hidden>
+        <label class="check"><input type="checkbox" id="crawl"> crawl each asset with katana (--crawl)</label>
+      </div>
+
+      <div class="field">
+        <label for="minsev">Hide findings below</label>
+        <select id="minsev">
+          <option value="">INFO (show everything)</option>
+          <option value="LOW">LOW</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="HIGH">HIGH</option>
+          <option value="CRITICAL">CRITICAL</option>
+        </select>
+      </div>
+
+      <h2 style="margin-top:16px">This will run</h2>
+      <div class="command" id="command"></div>
+      <button class="run" id="run" type="button">Run scan</button>
+      <div class="status" id="status"></div>
+    </section>
+
+    <section>
+      <h2>Progress</h2>
+      <div class="log" id="log"></div>
+      <div class="reports" id="reports"></div>
+    </section>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>

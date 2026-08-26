@@ -1,0 +1,73 @@
+/* The desktop shell wears the report's palette, so the window and the page it
+   opens are one tool. Dark-first, like the viewer. Tokens only; no bare hex
+   outside :root. */
+:root {
+  --canvas: #14161a; --panel: #1e2126; --sunken: #0f1113;
+  --line: #31363d; --line-strong: #454b53;
+  --ink: #dde1e6; --ink-2: #c3c9d0; --ink-3: #8e969e;
+  --mark: #c9a227; --mark-ink: #14161a;
+  --flag: #d2635a; --pass: #6db98c; --caution: #cba23e;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --canvas: #fbfbf9; --panel: #ffffff; --sunken: #f0f0ee;
+    --line: #e2e2df; --line-strong: #c9c9c5;
+    --ink: #2f2f2e; --ink-2: #3d3d3b; --ink-3: #62625f;
+    --mark: #5b2b4a; --mark-ink: #ffffff;
+    --flag: #8f2a2a; --pass: #2f6e4e; --caution: #8a5e1e;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--canvas); color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+header { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 10px; }
+header .name { font-weight: 600; }
+header .sub { color: var(--ink-3); font-size: 13px; }
+main { padding: 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+h2 { font-size: 13px; text-transform: none; letter-spacing: 0.02em; color: var(--ink-3); margin: 0 0 10px; font-weight: 600; }
+.field { margin: 0 0 12px; }
+.field label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+input[type=text], select {
+  width: 100%; padding: 7px 9px; background: var(--sunken); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 5px; font: inherit;
+}
+input[type=text]:focus, select:focus { outline: none; border-color: var(--mark); }
+.modes { display: flex; gap: 6px; margin-bottom: 14px; }
+.modes button {
+  flex: 1; padding: 8px; background: var(--sunken); color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 5px; cursor: pointer; font: inherit;
+}
+.modes button[aria-pressed=true] { background: var(--panel); color: var(--ink); border-color: var(--mark); }
+.check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; color: var(--ink-2); }
+.check input { accent-color: var(--mark); }
+.hint { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+.warn { color: var(--caution); }
+.command {
+  background: var(--sunken); border: 1px solid var(--line); border-radius: 5px;
+  padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px; color: var(--pass); white-space: pre-wrap; word-break: break-all;
+}
+.run {
+  margin-top: 14px; width: 100%; padding: 10px; background: var(--mark); color: var(--mark-ink);
+  border: none; border-radius: 5px; font: inherit; font-weight: 600; cursor: pointer;
+}
+.run:disabled { opacity: 0.5; cursor: default; }
+.log {
+  background: var(--sunken); border: 1px solid var(--line); border-radius: 5px;
+  padding: 10px 12px; height: 300px; overflow: auto; font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px; color: var(--ink-2); white-space: pre-wrap;
+}
+.log .progress { color: var(--ink-3); }
+.log .out { color: var(--ink-2); }
+.reports { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.reports button {
+  text-align: left; padding: 8px 10px; background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 5px; cursor: pointer; font: inherit; font-size: 13px;
+}
+.reports button:hover { border-color: var(--mark); }
+.status { font-size: 13px; margin-top: 10px; }
+.status.ok { color: var(--pass); }
+.status.bad { color: var(--flag); }

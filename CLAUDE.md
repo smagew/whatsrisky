@@ -150,6 +150,18 @@ For any non-trivial change, in order:
   `chore/…`), one PR each, deleted after merge. Conventional commit subjects
   (`feat(core):`, `fix(ui):`, `chore(release):`).
 
+## Desktop (`desktop/`, added in 0.6.0)
+
+- **The window drives the binary; it is not a second engine.** Tauri shell +
+  plain HTML/CSS/JS, no framework, no build step. The Rust side only spawns
+  `whatsrisky` and opens the report; all scanning stays in Go. If a setting exists
+  in the window it must be a flag the binary already has — the same rule as the
+  TUI's equivalent-command panel, made literal here: the command shown IS the argv
+  that runs.
+- **Tauri, not Electron**, chosen for footprint — a system webview, not a bundled
+  Chromium — to match the single-binary ethos. It needs the Node and Rust
+  toolchains to build; `cargo check` in `desktop/src-tauri` verifies the shell.
+
 ## Release
 
 Releases are automatic; the only manual part is the bump, and CI refuses a pull

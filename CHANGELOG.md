@@ -7,6 +7,19 @@ All notable changes to this project are documented here. This project follows
 
 ## [0.6.0] - 2026-08-26
 
+### Added — desktop
+
+- **A desktop window (`desktop/`), built on Tauri.** It drives the `whatsrisky`
+  binary rather than reimplementing anything: pick a mode — folder, address, or
+  domain — set the options, and it shows the exact command it will run, runs it,
+  streams the progress, and opens the report the binary wrote (the same HTML
+  viewer the CLI produces). The command on screen *is* the argument list that runs,
+  so it cannot drift from the scan. Tauri over Electron to keep the footprint to a
+  system webview and a thin Rust shell, in the spirit of the single Go binary.
+  Not launched here (no display); the Rust shell compiles against Tauri v2 and the
+  frontend is plain checked JS. Native folder picker and embedded report view are
+  the next steps.
+
 ### Changed
 
 - **`model.SchemaVersion` is 4.** The JSON report gained an `assets` array — the

@@ -1,0 +1,17 @@
+{
+  "name": "whatsrisky-desktop",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Desktop front end for whatsrisky — drives the whatsrisky binary and shows the report.",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  }
+}
