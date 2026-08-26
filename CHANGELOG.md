@@ -198,12 +198,18 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
-- **A tool the window cannot install for you reads cleanly.** zap showed
-  "manual: `zap-baseline.py` not found in PATH. Install: run the … Docker image" —
-  the description, then a line of doubled boilerplate. Now the row shows the
-  description and a plain "not installed", with the how-to-get-it on its own line
-  ("get it: run the ghcr.io/zaproxy/zaproxy Docker image …"), the "not found in
-  PATH. Install:" prefix stripped.
+- **ZAP runs via Docker, so it is usable without a fiddly install.** whatsrisky
+  calls zap-baseline.py / zap-full-scan.py, which the Homebrew cask and the desktop
+  app do not put on PATH — the scripts ship inside the ZAP Docker image. ZAP now
+  runs the script directly when it is on PATH and otherwise through
+  `ghcr.io/zaproxy/zaproxy`, mounting the work directory so the report comes back
+  either way. With Docker present it reads as installed ("via Docker") and the image
+  auto-pulls on first run; without Docker the hint says to install it. This replaces
+  the earlier honest-but-dead-end "run the Docker image" note.
+- **A tool the window cannot install for you reads cleanly.** A missing,
+  non-one-click tool shows the description, a plain "not installed", and its
+  how-to-get-it on its own line, with the "not found in PATH. Install:" boilerplate
+  stripped.
 - **Network findings now have a source of their own.** A finding's *source* — the
   axis the report groups and filters by — is inferred from its tool, and every tool
   added this release (surface, testssl, nuclei, zap, ffuf, llm-recon) fell through

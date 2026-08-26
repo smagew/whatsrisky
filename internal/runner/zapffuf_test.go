@@ -51,6 +51,33 @@ func TestZAPBaselineIsPassiveUnlessActive(t *testing.T) {
 	}
 }
 
+func TestZAPRunsViaDockerWhenTheScriptIsAbsent(t *testing.T) {
+	// The whole point of the fix: with no zap-baseline.py on PATH but Docker present,
+	// ZAP runs through the image rather than reading as uninstallable.
+	z := NewZAP(Config{Target: "https://x", WorkDir: "/tmp/wk"})
+	if z.hasScript() {
+		t.Skip("zap-baseline.py is on PATH here; the docker path is not exercised")
+	}
+	argv := z.argv()
+	if argv[0] != "docker" {
+		t.Fatalf("without the script, ZAP should run via docker, got %v", argv)
+	}
+	joined := strings.Join(argv, " ")
+	if !strings.Contains(joined, zapImage) {
+		t.Errorf("the docker command does not name the image: %s", joined)
+	}
+	if !strings.Contains(joined, "/tmp/wk:/zap/wrk") {
+		t.Errorf("the workdir is not mounted for the report: %s", joined)
+	}
+	if !strings.Contains(joined, "zap-baseline.py") {
+		t.Errorf("the baseline script is not invoked in the container: %s", joined)
+	}
+	// Installed tracks "can it run": true when docker is present even with no script.
+	if proc.Which("docker") != "" && !z.Installed() {
+		t.Error("with docker present, zap should read as installed")
+	}
+}
+
 func TestFfufParsesResults(t *testing.T) {
 	raw := []byte(`{"results":[
 	  {"input":{"FUZZ":"admin"},"url":"https://x/admin","status":401,"length":12},

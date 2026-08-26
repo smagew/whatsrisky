@@ -39,7 +39,31 @@ func NewZAP(config Config) *ZAP {
 
 func (z *ZAP) Name() string { return "zap" }
 
-func (z *ZAP) Version() string { return proc.Version(z.binary, "-h") }
+const zapImage = "ghcr.io/zaproxy/zaproxy"
+
+// hasScript is true when the ZAP scan scripts are on PATH (a local ZAP install).
+func (z *ZAP) hasScript() bool { return proc.Which("zap-baseline.py") != "" }
+
+// hasDocker is true when Docker is available to run the ZAP image, which ships the
+// scripts. This is the usual way to run them, since the Homebrew cask and the
+// desktop app do not put them on PATH.
+func (z *ZAP) hasDocker() bool { return proc.Which("docker") != "" }
+
+// Available and Installed both mean "can ZAP run": with the scripts on PATH, or via
+// the Docker image. doctor asks Installed; the scan asks Available.
+func (z *ZAP) Available() bool { return z.hasScript() || z.hasDocker() }
+func (z *ZAP) Installed() bool { return z.Available() }
+
+func (z *ZAP) UnavailableReason() string {
+	return "install Docker (Desktop) to run " + zapImage + ", or put zap-baseline.py on PATH"
+}
+
+func (z *ZAP) Version() string {
+	if z.hasScript() {
+		return proc.Version("zap-baseline.py", "-h")
+	}
+	return "via Docker: " + zapImage
+}
 
 // script is the baseline scan by default, the full scan when active traffic is
 // allowed.
@@ -50,9 +74,17 @@ func (z *ZAP) script() string {
 	return "zap-baseline.py"
 }
 
-func (z *ZAP) argv(jsonPath string) []string {
-	// -I: do not fail the process on warnings; we read the JSON ourselves.
-	return []string{z.script(), "-t", z.config.Target, "-J", jsonPath, "-I"}
+// argv runs the script directly when it is on PATH, otherwise through the Docker
+// image. Under Docker the working directory is mounted at /zap/wrk, where the
+// script writes its report, so both paths leave zap.json in WorkDir.
+func (z *ZAP) argv() []string {
+	if z.hasScript() {
+		return []string{z.script(), "-t", z.config.Target, "-J", "zap.json", "-I"}
+	}
+	return []string{
+		"docker", "run", "--rm", "-v", z.config.WorkDir + ":/zap/wrk:rw",
+		zapImage, z.script(), "-t", z.config.Target, "-J", "zap.json", "-I",
+	}
 }
 
 // zapReport is the standard ZAP JSON report, the fields used.
@@ -85,10 +117,9 @@ func (z *ZAP) Scan(progress func(string)) (Outcome, error) {
 	if timeout <= 0 {
 		timeout = 20 * time.Minute
 	}
-	argv := z.argv(jsonPath)
-	argv[0] = z.script()
-	// The baseline binary is what Available checked; if active, run the full
-	// script by name and let PATH resolve it beside the baseline one.
+	argv := z.argv()
+	// Both the local script and the Docker run leave zap.json in WorkDir: the script
+	// writes relative to Dir, and the container writes to the mounted /zap/wrk.
 	result, err := proc.Run(argv, proc.Options{Timeout: timeout, Dir: z.config.WorkDir, OnStderr: Progress(progress)})
 	raw, readErr := os.ReadFile(jsonPath)
 	if readErr != nil {
@@ -111,7 +142,7 @@ func (z *ZAP) Scan(progress func(string)) (Outcome, error) {
 	}
 	return Outcome{
 		Findings: findings,
-		Command:  strings.Join(z.argv(jsonPath), " "),
+		Command:  strings.Join(argv, " "),
 		Stderr:   result.Stderr,
 		Note:     note,
 	}, nil
