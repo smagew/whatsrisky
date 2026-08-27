@@ -75,17 +75,20 @@
         <button class="run" id="run" type="button">Run scan</button>
         <button class="stop" id="stop" type="button" hidden>Stop</button>
       </div>
-      <div class="status" id="status"></div>
+      <!-- The report sits with the main buttons, so it is where you look after Run. -->
+      <div class="reports" id="reports"></div>
     </section>
     <div class="divider" id="divider" role="separator" aria-orientation="vertical"></div>
     <section>
       <h2>Tools</h2>
       <div class="tools" id="tools"></div>
-      <h2 style="margin-top:16px">Progress</h2>
+      <div class="progress-head">
+        <h2 style="margin:0">Progress</h2>
+        <span class="status" id="status"></span>
+      </div>
       <div class="bar" id="bar" hidden><div class="bar-fill" id="barFill"></div></div>
       <div class="toolprog" id="toolprog"></div>
       <div class="log" id="log"></div>
-      <div class="reports" id="reports"></div>
     </section>
   </main>
   <script src="main.js"></script>
