@@ -25,8 +25,17 @@ body {
 header { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 10px; }
 header .name { font-weight: 600; }
 header .sub { color: var(--ink-3); font-size: 13px; }
-main { padding: 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-@media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+main { padding: 18px 20px; display: grid; grid-template-columns: var(--left, 1fr) 5px 1fr; gap: 12px; align-items: start; }
+main > section { min-width: 0; overflow-wrap: anywhere; }
+.divider { cursor: col-resize; background: var(--line); border-radius: 5px; align-self: stretch; }
+.divider:hover { background: var(--line-strong); }
+@media (max-width: 720px) {
+  main { grid-template-columns: 1fr; }
+  .divider { display: none; }
+}
+.actions { margin-top: 14px; display: flex; gap: 8px; }
+.stop { padding: 10px 18px; background: var(--sunken); color: var(--flag); border: 1px solid var(--line); border-radius: 5px; font: inherit; font-weight: 600; cursor: pointer; }
+.stop:hover { border-color: var(--flag); }
 h2 { font-size: 13px; text-transform: none; letter-spacing: 0.02em; color: var(--ink-3); margin: 0 0 10px; font-weight: 600; }
 .field { margin: 0 0 12px; }
 .field label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
@@ -52,14 +61,14 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
   font-size: 13px; color: var(--pass); white-space: pre-wrap; word-break: break-all;
 }
 .run {
-  margin-top: 14px; width: 100%; padding: 10px; background: var(--mark); color: var(--mark-ink);
+  flex: 1; padding: 10px; background: var(--mark); color: var(--mark-ink);
   border: none; border-radius: 5px; font: inherit; font-weight: 600; cursor: pointer;
 }
 .run:disabled { opacity: 0.5; cursor: default; }
 .log {
   background: var(--sunken); border: 1px solid var(--line); border-radius: 5px;
   padding: 10px 12px; height: 300px; overflow: auto; font-family: ui-monospace, Menlo, monospace;
-  font-size: 12px; color: var(--ink-2); white-space: pre-wrap;
+  font-size: 12px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .log .progress { color: var(--ink-3); }
 .log .out { color: var(--ink-2); }
