@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -14,6 +15,21 @@ import (
 	"github.com/smagew/whatsrisky/internal/runner"
 	"github.com/smagew/whatsrisky/internal/scan"
 )
+
+// ansiEscape matches the colour/formatting sequences some tools print in their
+// version banner (nuclei, testssl), which would otherwise reach the UI as noise.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+// cleanVersion strips ANSI sequences and collapses whitespace, so a version reads
+// as text rather than escape codes.
+func cleanVersion(version string) string {
+	version = ansiEscape.ReplaceAllString(version, "")
+	version = strings.Join(strings.Fields(version), " ")
+	if len(version) > 60 {
+		version = version[:60]
+	}
+	return version
+}
 
 // toolStatus is the machine-readable form of a probe, for the desktop UI.
 type toolStatus struct {
@@ -185,7 +201,7 @@ func probeTools() []probe {
 			entry.hint = err.Error()
 		case runner.Present(built):
 			entry.found = true
-			entry.version = built.Version()
+			entry.version = cleanVersion(built.Version())
 		default:
 			// Only ask why when it is actually missing: probing a healthy backend
 			// for a failure reason produces a misleading string.
@@ -201,7 +217,7 @@ func probeTools() []probe {
 		entry := probe{name: name, covers: perimeterCovers[name]}
 		if path := proc.Which(name); path != "" {
 			entry.found = true
-			entry.version = proc.Version(name, "-version")
+			entry.version = cleanVersion(proc.Version(name, "-version"))
 		} else {
 			entry.hint = "`" + name + "` not found in PATH — used by `whatsrisky perimeter`"
 		}
