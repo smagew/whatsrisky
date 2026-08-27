@@ -196,6 +196,22 @@ All notable changes to this project are documented here. This project follows
   Absence must not read as safety on this screen either.
 - `ctrl+p` shows the panel where there is no room for it beside the form.
 
+### Added — desktop, continued
+
+- **A Stop button.** A scan can be long — a slow testssl, a big crawl, the agentic
+  AI pass — so it can now be cancelled. Stop signals the whole process group, so
+  everything the scan spawned (the scanners, the ZAP Docker container, the model
+  CLI) stops, not just whatsrisky.
+- **A draggable split between the two columns**, remembered across launches, and
+  long text (a deep path, a long command) now wraps instead of shoving the columns
+  wider — the layout no longer jumps as output streams in.
+
+### Changed
+
+- **testssl runs with `--fast`.** A full per-cipher sweep against a live host takes
+  many minutes; --fast keeps the protocol, certificate and vulnerability checks
+  while dropping the slowest part, so it is no longer the pass everything waits on.
+
 ### Fixed
 
 - **The window reliably shows a scan as finished, and offers the report.** Even

@@ -4,12 +4,20 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+
+// running holds the process-group id of the scan in flight, so cancel can stop the
+// whole tree — whatsrisky and everything it spawned (docker, the agentic CLI,
+// testssl). None when nothing is running.
+fn running() -> &'static Mutex<Option<u32>> {
+    static RUNNING: OnceLock<Mutex<Option<u32>>> = OnceLock::new();
+    RUNNING.get_or_init(|| Mutex::new(None))
+}
 
 // A line of scanner output, tagged with the stream it came from so the window can
 // show progress and errors differently.
@@ -81,13 +89,20 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
     thread::spawn(move || {
         // stdin is null: the AI pass drives an agentic CLI that must never block
         // waiting for input that will not come.
-        let mut child = match tool(&program)
+        let mut command = tool(&program);
+        command
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        // Own process group, so cancel can signal the whole tree — the scanners,
+        // docker, and the agentic CLI — not just whatsrisky itself.
+        #[cfg(unix)]
         {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let mut child = match command.spawn() {
             Ok(child) => child,
             Err(err) => {
                 let _ = app.emit(
@@ -101,6 +116,8 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
                 return;
             }
         };
+
+        *running().lock().unwrap() = Some(child.id());
 
         // Both streams drain on their own threads, so a full pipe never blocks the
         // process. The report paths are collected into a shared vec.
@@ -144,6 +161,7 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
         // for EOF then hangs forever. A short grace lets the reader drain the last
         // buffered lines (the "report" paths among them) before they are read.
         let code = child.wait().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+        *running().lock().unwrap() = None;
         thread::sleep(Duration::from_millis(400));
         let collected = reports.lock().unwrap().clone();
         let _ = app.emit(
@@ -155,6 +173,32 @@ fn run_scan(app: AppHandle, args: Vec<String>, bin: Option<String>) {
             },
         );
     });
+}
+
+// cancel_scan stops the scan in flight, and everything it spawned, by signalling
+// the process group. A scan can be long — a slow testssl, a big katana crawl — so
+// stopping it has to be one click, not a force-quit of the window.
+#[tauri::command]
+fn cancel_scan() {
+    let pid = match *running().lock().unwrap() {
+        Some(pid) => pid,
+        None => return,
+    };
+    #[cfg(unix)]
+    {
+        // Negative pid = the whole group. TERM first to let things clean up (docker
+        // removes its container), then KILL for anything that ignored it.
+        let group = format!("-{pid}");
+        let _ = Command::new("kill").args(["-TERM", &group]).status();
+        thread::sleep(Duration::from_millis(600));
+        let _ = Command::new("kill").args(["-KILL", &group]).status();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status();
+    }
 }
 
 // doctor returns the tool inventory as JSON, so the window can show what will run
@@ -243,7 +287,8 @@ pub fn run() {
             open_report,
             doctor,
             install_tool,
-            models
+            models,
+            cancel_scan
         ])
         .run(tauri::generate_context!())
         .expect("error while running the whatsrisky window");

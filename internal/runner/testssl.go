@@ -57,7 +57,10 @@ func (t *TestSSL) hostPort() string {
 }
 
 func (t *TestSSL) argv(jsonPath string) []string {
-	return []string{t.binary, "--quiet", "--color", "0", "--jsonfile", jsonPath,
+	// --fast trims the slowest part (probing every cipher one by one) while still
+	// checking protocols, the certificate and the named vulnerabilities. A full
+	// per-cipher sweep can take many minutes against a live host.
+	return []string{t.binary, "--quiet", "--color", "0", "--fast", "--jsonfile", jsonPath,
 		"--severity", "LOW", t.hostPort()}
 }
 

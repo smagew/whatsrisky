@@ -51,6 +51,7 @@ const els = {
   log: $("log"), reports: $("reports"), tools: $("tools"), toolprog: $("toolprog"),
   modedesc: $("modedesc"),
   bar: $("bar"), barFill: $("barFill"),
+  stop: $("stop"), divider: $("divider"),
 };
 
 const MODES = {
@@ -306,6 +307,7 @@ async function run() {
   els.barFill.style.width = "0";
   els.bar.hidden = true;
   els.run.disabled = true;
+  els.stop.hidden = false;
   const args = argv();
   line("whatsrisky " + args.filter((x) => x !== "--events").join(" "), "out");
   try {
@@ -356,6 +358,7 @@ function finish(reports) {
   progress.forEach((row) => { if (row.status === "running" || row.status === "pending") row.status = "ok"; });
   renderProgress();
   els.barFill.style.width = "100%";
+  els.stop.hidden = true;
   if (reports && reports.length) showReports(reports);
   if (!els.status.textContent) {
     els.status.textContent = "Finished.";
@@ -398,6 +401,27 @@ function showReports(reports) {
   });
 }
 
+// wireDivider lets the person drag the split between the two columns, and
+// remembers where they left it. Long text wraps rather than pushing the columns
+// around, so the width only changes when they change it.
+function wireDivider() {
+  const saved = (() => { try { return localStorage.getItem("wr-left"); } catch (e) { return null; } })();
+  if (saved) document.documentElement.style.setProperty("--left", saved);
+  let dragging = false;
+  els.divider.addEventListener("mousedown", (e) => { dragging = true; e.preventDefault(); document.body.style.userSelect = "none"; });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const main = els.divider.parentElement;
+    const rect = main.getBoundingClientRect();
+    let pct = ((e.clientX - rect.left) / rect.width) * 100;
+    pct = Math.max(25, Math.min(75, pct));
+    const value = pct.toFixed(1) + "%";
+    document.documentElement.style.setProperty("--left", value);
+    try { localStorage.setItem("wr-left", value); } catch (e2) { /* private mode */ }
+  });
+  window.addEventListener("mouseup", () => { dragging = false; document.body.style.userSelect = ""; });
+}
+
 function wire() {
   document.querySelectorAll("#modes button").forEach((b) => {
     b.addEventListener("click", () => setMode(b.dataset.mode));
@@ -405,6 +429,17 @@ function wire() {
   [els.target, els.authorized, els.netactive, els.exclude, els.model, els.wordlist, els.minsev]
     .forEach((e) => { e.addEventListener("input", refresh); e.addEventListener("change", refresh); });
   els.run.addEventListener("click", run);
+  els.stop.addEventListener("click", () => {
+    els.stop.disabled = true;
+    invoke("cancel_scan").finally(() => {
+      els.stop.disabled = false;
+      els.status.textContent = "Stopped.";
+      els.status.className = "status bad";
+      els.stop.hidden = true;
+      refresh();
+    });
+  });
+  wireDivider();
 
   listen("scan-line", (event) => {
     const text = event.payload.text;

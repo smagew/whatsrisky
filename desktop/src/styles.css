@@ -87,7 +87,7 @@ input[type=text]:focus, select:focus { outline: none; border-color: var(--mark);
 .tool .dot.yes { background: var(--pass); }
 .tool .dot.no { background: var(--ink-3); }
 .tool .name { font-weight: 600; }
-.tool .covers { color: var(--ink-3); flex: 1; }
+.tool .covers { color: var(--ink-3); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .tool button { padding: 4px 10px; background: var(--mark); color: var(--mark-ink); border: none; border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; }
 .tool button:disabled { opacity: 0.5; cursor: default; }
 /* live per-tool progress */
