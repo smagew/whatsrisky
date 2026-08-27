@@ -105,3 +105,29 @@ func keys(m map[string]bool) []string {
 	}
 	return out
 }
+
+func TestTheDefaultNetworkPassesLeaveOutTheHeavyOptIns(t *testing.T) {
+	// zap (Java/Docker) and ffuf (needs a wordlist, active) are opt-in via --passes,
+	// not part of a plain network scan. This was the bug behind "zap and ffuf ran
+	// though I did not tick them": the default set wrongly included them, so a scan
+	// with no --passes ran them.
+	for _, unwanted := range []string{"zap", "ffuf"} {
+		for _, name := range DefaultNetTools {
+			if name == unwanted {
+				t.Errorf("%s is opt-in and must not be in DefaultNetTools", unwanted)
+			}
+		}
+	}
+	// And the observational passes are there.
+	for _, want := range []string{"surface", "testssl", "nuclei", "llm-recon"} {
+		found := false
+		for _, name := range DefaultNetTools {
+			if name == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s should be a default network pass", want)
+		}
+	}
+}

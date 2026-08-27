@@ -24,7 +24,7 @@ var (
 	NetTools = []string{"surface", "testssl", "nuclei", "zap", "ffuf", "llm-recon"}
 	// DefaultNetTools is every network pass. The LLM recon spends money and is
 	// opt-out with --no-llm, the same shape as the filesystem ai pass.
-	DefaultNetTools = []string{"surface", "testssl", "nuclei", "zap", "ffuf", "llm-recon"}
+	DefaultNetTools = []string{"surface", "testssl", "nuclei", "llm-recon"}
 	DefaultTools    = []string{"semgrep", "trivy", "gitleaks", "ai"}
 
 	// ToolsWithoutAI is the default set with the review pass taken out. It exists
