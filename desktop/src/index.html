@@ -8,15 +8,30 @@
 </head>
 <body>
   <header>
-    <span class="name">whatsrisky</span>
-    <span class="sub">what's risky — a folder, an address, or a whole domain</span>
+    <span class="wordmark">whats<b>risky</b><span class="v">0.6.0</span></span>
+    <div class="theme" id="theme">
+      <button data-t="auto" type="button">auto</button>
+      <button data-t="light" type="button">light</button>
+      <button data-t="dark" type="button">dark</button>
+    </div>
   </header>
+
   <main>
+    <!-- console -->
     <section>
       <div class="modes" id="modes">
-        <button data-mode="folder" aria-pressed="true" type="button">Folder</button>
-        <button data-mode="url" aria-pressed="false" type="button">Address</button>
-        <button data-mode="domain" aria-pressed="false" type="button">Domain</button>
+        <button class="mode" data-mode="folder" aria-pressed="true" type="button">
+          <svg viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v10H3z"/></svg>
+          <div class="t">Folder</div><div class="s">source on disk</div>
+        </button>
+        <button class="mode" data-mode="url" aria-pressed="false" type="button">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>
+          <div class="t">Address</div><div class="s">one live URL</div>
+        </button>
+        <button class="mode" data-mode="domain" aria-pressed="false" type="button">
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5"/><rect x="3" y="16" width="6" height="5"/><rect x="15" y="16" width="6" height="5"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <div class="t">Domain</div><div class="s">the whole estate</div>
+        </button>
       </div>
       <div class="modedesc" id="modedesc"></div>
 
@@ -26,9 +41,6 @@
         <div class="hint" id="targetHint"></div>
       </div>
 
-      <!-- which passes run is set by ticking tools in the panel on the right -->
-
-      <!-- folder options -->
       <div data-for="folder" hidden>
         <div class="field">
           <label for="exclude">Folders and files to skip</label>
@@ -37,21 +49,18 @@
         </div>
       </div>
 
-      <!-- network + perimeter options -->
       <div data-for="url domain" hidden>
         <label class="check"><input type="checkbox" id="authorized"> I am authorized to scan this target</label>
         <div class="hint warn">Required. You are stating you may scan it — scanning something you do not control may be illegal.</div>
         <label class="check"><input type="checkbox" id="netactive"> allow attack-shaped traffic (--net-active)</label>
       </div>
 
-      <!-- wordlist, shown when ffuf is ticked -->
       <div class="field" id="wordlistField" hidden>
         <label for="wordlist">ffuf wordlist</label>
         <input type="text" id="wordlist" placeholder="/path/to/wordlist.txt (e.g. a SecLists file)">
         <div class="hint">ffuf brute-forces these paths; without a list it cannot run.</div>
       </div>
 
-      <!-- model, shown when an AI pass is ticked -->
       <div class="field" id="modelField" hidden>
         <label for="model">AI model</label>
         <input type="text" id="model" list="modelList" placeholder="blank = the backend's default">
@@ -69,22 +78,37 @@
         </select>
       </div>
 
-      <h2 style="margin-top:16px">This will run</h2>
-      <div class="command" id="command"></div>
-      <div class="actions">
-        <button class="run" id="run" type="button">Run scan</button>
-        <button class="stop" id="stop" type="button" hidden>Stop</button>
+      <div class="cmd">
+        <div class="head"><span class="k">this will run</span><span class="live">● live</span></div>
+        <div class="command" id="command"></div>
+        <div class="actions">
+          <button class="run" id="run" type="button">▶ run scan</button>
+          <button class="stop" id="stop" type="button" hidden>Stop</button>
+        </div>
       </div>
-      <!-- The report sits with the main buttons, so it is where you look after Run. -->
       <div class="reports" id="reports"></div>
     </section>
+
     <div class="divider" id="divider" role="separator" aria-orientation="vertical"></div>
+
+    <!-- monitor -->
     <section>
       <h2>Tools</h2>
       <div class="tools" id="tools"></div>
+
       <div class="progress-head">
-        <h2 style="margin:0">Progress</h2>
+        <h2>Progress</h2>
         <span class="status" id="status"></span>
+      </div>
+      <div class="verdict" id="verdict" hidden>
+        <div class="top">
+          <div>
+            <div class="vname mono" id="verdictName"></div>
+            <div class="vsay" id="verdictSay"></div>
+          </div>
+          <div class="vrisk" id="verdictRisk"></div>
+        </div>
+        <div class="tallies" id="tallies"></div>
       </div>
       <div class="bar" id="bar" hidden><div class="bar-fill" id="barFill"></div></div>
       <div class="toolprog" id="toolprog"></div>

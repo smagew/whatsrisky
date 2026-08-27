@@ -246,14 +246,17 @@ func cmdScan(args []string, stdout, stderr *os.File) int {
 // console renders a scan for a terminal. Quiet mode prints nothing but the paths,
 // because stdout may belong to a JSON payload.
 type eventJSON struct {
-	Kind      string   `json:"kind"`
-	Tool      string   `json:"tool,omitempty"`
-	Message   string   `json:"message,omitempty"`
-	Status    string   `json:"status,omitempty"`
-	Findings  int      `json:"findings,omitempty"`
-	DurationS float64  `json:"duration_s,omitempty"`
-	Tools     []string `json:"tools,omitempty"`
-	Paths     []string `json:"paths,omitempty"`
+	Kind      string         `json:"kind"`
+	Tool      string         `json:"tool,omitempty"`
+	Message   string         `json:"message,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Findings  int            `json:"findings,omitempty"`
+	DurationS float64        `json:"duration_s,omitempty"`
+	Tools     []string       `json:"tools,omitempty"`
+	Paths     []string       `json:"paths,omitempty"`
+	Verdict   string         `json:"verdict,omitempty"`
+	Risk      int            `json:"risk,omitempty"`
+	Counts    map[string]int `json:"counts,omitempty"`
 }
 
 type console struct {
@@ -313,6 +316,20 @@ func (c *console) handle(event scan.Event) {
 
 func (c *console) finish(outcome scan.Outcome, options scan.Options, jsonStdout, quiet bool) {
 	current := outcome.Report
+	if c.events {
+		counts := map[string]int{}
+		for severity, n := range current.Counts() {
+			counts[string(severity)] = n
+		}
+		payload := eventJSON{
+			Kind: "summary", Verdict: current.Verdict(),
+			Risk: current.RiskScore(), Findings: len(current.ActiveFindings()),
+			Counts: counts,
+		}
+		if body, err := json.Marshal(payload); err == nil {
+			fmt.Fprintln(c.stderr, "EVENT "+string(body))
+		}
+	}
 	if jsonStdout {
 		body, err := report.Marshal(current)
 		if err == nil {

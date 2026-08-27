@@ -196,6 +196,20 @@ All notable changes to this project are documented here. This project follows
   Absence must not read as safety on this screen either.
 - `ctrl+p` shows the panel where there is no room for it beside the form.
 
+### Changed — desktop, redesigned
+
+- **The window has a point of view now.** Same palette as the report it opens, but
+  the equivalent command is the hero — typeset in a terminal mono, its program and
+  flags coloured, Run built into it — because the command shown *is* what runs. The
+  result gets weight too: a verdict panel with the risk level and per-severity
+  tallies, coloured by the worst severity, instead of a line in the log. A mono
+  (JetBrains Mono) carries identity, command and verdict; a grotesque (Archivo)
+  carries the form. Both fonts are bundled locally — no network, self-contained
+  like the viewer. The three modes are a segmented control with a glyph and a
+  phrase, not three grey buttons.
+- **A theme toggle in the title bar: dark by default, with light and auto.** The
+  choice is remembered; auto follows the OS.
+
 ### Added — desktop, continued
 
 - **A Stop button.** A scan can be long — a slow testssl, a big crawl, the agentic
